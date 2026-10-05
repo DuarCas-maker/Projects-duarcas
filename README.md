@@ -108,6 +108,19 @@ node --import ./scripts/sites-env.mjs ./node_modules/wrangler/bin/wrangler.js d1
 
 Replace the filename with the pending migration and `DB` with your D1 binding name if different. Use `.wrangler/state`, not `.wrangler/state/v3`; Wrangler adds the versioned directories. Do not replay migrations already applied locally. This updates only the preview database; publishing applies production migrations separately.
 
+## Optional self-hosted Supabase backend
+
+Project OS can use a self-hosted Supabase instance over its HTTPS REST and Storage APIs while keeping Sites authentication. Set `PROJECT_OS_BACKEND=d1` to continue using D1 and R2 while preparing the connection.
+
+1. Run `supabase/migrations/20261005_0001_project_os.sql` once in the Supabase SQL editor.
+2. Configure the production runtime values `SUPABASE_URL` and `SUPABASE_SECRET_KEY` in Sites. The secret key must never be exposed to browser code or committed to source control. `.env.example` documents the local equivalents without credentials.
+3. Keep the Supabase endpoint on HTTPS with a valid certificate. The application rejects HTTP URLs and does not follow redirects that could expose the key.
+4. After validating the API and schema, set `PROJECT_OS_BACKEND=supabase` and deploy. On first use the server copies the current user's D1 records (including task evidence) and R2 documents into Supabase. It writes a completion marker last, so interrupted imports can resume. Original D1/R2 data is retained.
+
+Once activated, Supabase errors are surfaced to the application instead of silently writing to D1. This avoids splitting subsequent changes between two databases. D1/R2 is retained as the migration source, not kept in sync after activation. This first version is personal; demo project IDs are global and are not suitable for multiple independent users.
+
+The migration creates the structured Project OS tables, enables RLS, restricts direct `anon` and `authenticated` access, grants the server-side `service_role` access, and provisions the private `project-documents` Storage bucket.
+
 ## Diagnostic Commands
 
 - `npm run install:ci`: perform the one locked dependency install

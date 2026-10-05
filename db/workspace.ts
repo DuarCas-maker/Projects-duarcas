@@ -1,6 +1,9 @@
 import { and, desc, eq } from "drizzle-orm";
+import { env } from "cloudflare:workers";
+import { canClaimLegacyWorkspace } from "@/lib/current-user";
 import { getDb } from "./index";
 import * as schema from "./schema";
+import { ensureSupabaseWorkspace, getSupabaseWorkspaceState, isSupabaseConfigured, type WorkspaceSnapshot } from "./supabase";
 import {
   DEMO_CALENDAR,
   DEMO_DEPENDENCIES,
@@ -18,6 +21,15 @@ import {
 
 export async function ensureWorkspace(userId: string) {
   const db = getDb();
+  // Older releases could bootstrap the personal workspace under this reserved
+  // development identity. Only the configured, signed-in owner may claim it.
+  if (userId !== "local-owner" && await canClaimLegacyWorkspace(userId)) {
+    const legacy = await db.select({ id: schema.projects.id }).from(schema.projects).where(eq(schema.projects.userId, "local-owner")).limit(1);
+    if (legacy.length && env.DB) {
+      const tables = ["projects", "milestones", "tasks", "task_dependencies", "task_evidence", "project_financials", "project_events", "ai_suggestions", "inbox_items", "calendar_blocks", "knowledge_items", "repositories"];
+      await env.DB.batch(tables.map((table) => env.DB!.prepare(`UPDATE ${table} SET user_id = ? WHERE user_id = ?`).bind(userId, "local-owner")));
+    }
+  }
   const existing = await db.select({ id: schema.projects.id }).from(schema.projects).where(eq(schema.projects.userId, userId));
   if (existing.length >= DEMO_PROJECTS.length) return db;
 
@@ -37,7 +49,7 @@ export async function ensureWorkspace(userId: string) {
   return db;
 }
 
-export async function getWorkspaceState(userId: string) {
+export async function getD1WorkspaceState(userId: string) {
   const db = await ensureWorkspace(userId);
   const [projects, milestones, tasks, dependencies, financials, events, suggestions, inbox, calendar, knowledge, repositories] = await Promise.all([
     db.select().from(schema.projects).where(eq(schema.projects.userId, userId)).orderBy(desc(schema.projects.priority)),
@@ -53,6 +65,24 @@ export async function getWorkspaceState(userId: string) {
     db.select().from(schema.repositories).where(eq(schema.repositories.userId, userId)),
   ]);
   return { projects, milestones, tasks, dependencies, financials, events, suggestions, inbox, calendar, knowledge, repositories };
+}
+
+export async function ensureWorkspaceBackend(userId: string) {
+  if (!isSupabaseConfigured()) {
+    await ensureWorkspace(userId);
+    return;
+  }
+  await ensureSupabaseWorkspace(userId, async () => {
+    const state = await getD1WorkspaceState(userId);
+    const evidence = await getDb().select().from(schema.taskEvidence).where(eq(schema.taskEvidence.userId, userId));
+    return { ...state, evidence } as WorkspaceSnapshot;
+  });
+}
+
+export async function getWorkspaceState(userId: string) {
+  if (!isSupabaseConfigured()) return getD1WorkspaceState(userId);
+  await ensureWorkspaceBackend(userId);
+  return getSupabaseWorkspaceState(userId);
 }
 
 export function owned(userId: string, column: typeof schema.tasks.userId, idColumn: typeof schema.tasks.id, id: string) {

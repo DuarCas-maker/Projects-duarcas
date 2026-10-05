@@ -23,9 +23,12 @@ import {
   SidebarMenuItem, SidebarProvider, SidebarTrigger,
 } from "@/components/ui/sidebar";
 
-type Workspace = ReturnType<typeof getDemoState>;
-type Project = Workspace["projects"][number];
-type Task = Workspace["tasks"][number];
+type DemoWorkspace = ReturnType<typeof getDemoState>;
+type Project = DemoWorkspace["projects"][number];
+type Task = Omit<DemoWorkspace["tasks"][number], "completedAt"> & { completedAt: string | null };
+type InboxItem = Omit<DemoWorkspace["inbox"][number], "detectedProjectId"> & { detectedProjectId: string | null };
+type KnowledgeItem = Omit<DemoWorkspace["knowledge"][number], "storageKey"> & { storageKey: string | null };
+type Workspace = Omit<DemoWorkspace, "tasks" | "inbox" | "knowledge"> & { tasks: Task[]; inbox: InboxItem[]; knowledge: KnowledgeItem[] };
 type View = "today" | "projects" | "inbox" | "calendar" | "ai" | "project";
 
 const nav = [
@@ -122,13 +125,13 @@ function Empty({ label }: { label: string }) { return <div className="empty-stat
 export function ProjectOS() {
   const [state, setState] = useState<Workspace>(getDemoState()); const [view, setView] = useState<View>("today"); const [selectedProject, setSelectedProject] = useState("lyn"); const [loading, setLoading] = useState(true); const [drawer, setDrawer] = useState(false); const [addOpen, setAddOpen] = useState(false); const [search, setSearch] = useState("");
   useEffect(() => { if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => undefined); }, []);
-  useEffect(() => { fetch("/api/state").then((response) => { if (!response.ok) throw new Error(); return response.json(); }).then((data) => setState(data)).catch(() => toast.info("Vista de demostración activa; los datos se sincronizarán cuando el almacenamiento esté disponible.")).finally(() => setLoading(false)); }, []);
-  const mutate = async (action: string, payload: Record<string, unknown>) => { const response = await fetch("/api/action", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action, payload }) }); if (!response.ok) throw new Error((await response.json()).error ?? "No fue posible guardar"); return response.json(); };
+  useEffect(() => { fetch("/api/state").then(async (response) => { if (!response.ok) throw new Error(); return await response.json() as Workspace; }).then((data) => setState(data)).catch(() => toast.info("Vista de demostración activa; los datos se sincronizarán cuando el almacenamiento esté disponible.")).finally(() => setLoading(false)); }, []);
+  const mutate = async <T,>(action: string, payload: Record<string, unknown>): Promise<T> => { const response = await fetch("/api/action", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action, payload }) }); const result = await response.json() as T & { error?: string }; if (!response.ok) throw new Error(result.error ?? "No fue posible guardar"); return result; };
   const updateStatus = (id: string, status: string) => { const previous = state.tasks; setState((current) => ({ ...current, tasks: current.tasks.map((task) => task.id === id ? { ...task, status, isBlocked: status === "blocked", completedAt: status === "completed" ? new Date().toISOString() : null, updatedAt: new Date().toISOString() } : task) })); mutate("update_task_status", { id, status }).then(() => toast.success(status === "completed" ? "Tarea completada" : "Estado actualizado")).catch((error) => { setState((current) => ({ ...current, tasks: previous })); toast.error(error.message); }); };
   const decide = (id: string, status: string) => { setState((current) => ({ ...current, suggestions: current.suggestions.map((item) => item.id === id ? { ...item, status } : item) })); mutate("suggestion_status", { id, status }).then(() => toast.success(status === "approved" ? "Sugerencia aprobada" : "Decisión guardada")).catch((error) => toast.error(error.message)); };
-  const capture = (content: string, inputType: string) => { const optimistic = { id: crypto.randomUUID(), content, inputType, detectedProjectId: null, classification: "Analizando…", status: "unprocessed", createdAt: new Date().toISOString() }; setState((current) => ({ ...current, inbox: [optimistic, ...current.inbox] })); mutate("create_inbox", { content, inputType }).then(({ inbox }) => { setState((current) => ({ ...current, inbox: current.inbox.map((item) => item.id === optimistic.id ? inbox : item) })); toast.success("Entrada capturada"); }).catch((error) => toast.error(error.message)); };
+  const capture = (content: string, inputType: string) => { const optimistic: InboxItem = { id: crypto.randomUUID(), content, inputType, detectedProjectId: null, classification: "Analizando…", status: "unprocessed", createdAt: new Date().toISOString() }; setState((current) => ({ ...current, inbox: [optimistic, ...current.inbox] })); mutate<{ inbox: InboxItem }>("create_inbox", { content, inputType }).then(({ inbox }) => { setState((current) => ({ ...current, inbox: current.inbox.map((item) => item.id === optimistic.id ? inbox : item) })); toast.success("Entrada capturada"); }).catch((error) => toast.error(error.message)); };
   const approveCalendar = () => { const ids = state.calendar.filter((item) => item.status === "proposed").map((item) => item.id); setState((current) => ({ ...current, calendar: current.calendar.map((item) => ids.includes(item.id) ? { ...item, status: "approved" } : item) })); mutate("approve_calendar", { ids }).then(() => toast.success("Plan aprobado")).catch((error) => toast.error(error.message)); };
-  const uploadDocument = async (projectId: string, file: File) => { const data = new FormData(); data.set("projectId", projectId); data.set("file", file); const pending = toast.loading("Guardando archivo…"); try { const response = await fetch("/api/documents", { method: "POST", body: data }); const result = await response.json(); if (!response.ok) throw new Error(result.error); setState((current) => ({ ...current, knowledge: [result.item, ...current.knowledge] })); toast.success("Archivo guardado", { id: pending }); } catch (error) { toast.error(error instanceof Error ? error.message : "No fue posible cargar", { id: pending }); } };
+  const uploadDocument = async (projectId: string, file: File) => { const data = new FormData(); data.set("projectId", projectId); data.set("file", file); const pending = toast.loading("Guardando archivo…"); try { const response = await fetch("/api/documents", { method: "POST", body: data }); const result = await response.json() as { error?: string; item: KnowledgeItem }; if (!response.ok) throw new Error(result.error); setState((current) => ({ ...current, knowledge: [result.item, ...current.knowledge] })); toast.success("Archivo guardado", { id: pending }); } catch (error) { toast.error(error instanceof Error ? error.message : "No fue posible cargar", { id: pending }); } };
   const openProject = (id: string) => { setSelectedProject(id); setView("project"); window.scrollTo({ top: 0, behavior: "smooth" }); };
   useEffect(() => {
     const context = (document as unknown as { modelContext?: { registerTool: (tool: unknown, options?: unknown) => unknown } }).modelContext;
@@ -154,7 +157,7 @@ export function ProjectOS() {
           const estimatedMinutes = typeof value.estimatedMinutes === "number" ? value.estimatedMinutes : 30;
           if (!projectFor(state, projectId) || !title || title.length > 180 || estimatedMinutes < 5 || estimatedMinutes > 480) throw new Error("Proyecto, título o estimación inválidos.");
           const response = await fetch("/api/action", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "create_task", payload: { projectId, title, estimatedMinutes, priority: 3, urgency: 3 } }) });
-          const result = await response.json();
+          const result = await response.json() as { error?: string; task: Task };
           if (!response.ok) throw new Error(result.error ?? "No fue posible crear la tarea.");
           setState((current) => ({ ...current, tasks: [result.task, ...current.tasks] }));
           return { id: result.task.id, projectId, title, status: result.task.status };
