@@ -25,7 +25,7 @@ let calls = [];
 const service = await backend(runtime, async (url, init) => {
   calls.push({ url, init });
   assert.equal(init.headers.apikey, runtime.SUPABASE_SECRET_KEY);
-  assert.equal(init.redirect, "error");
+  assert.equal(init.redirect, "manual");
   const parsed = new URL(url);
   if (parsed.pathname === "/rest/v1/projects") {
     assert.equal(parsed.searchParams.get("user_id"), "eq.owner-1");
@@ -80,4 +80,9 @@ assert.equal(loaded, false, "completed migrations must not replay source data");
 
 const denied = await backend(runtime, async () => new Response("upstream body containing credentials", { status: 401 }));
 await assert.rejects(denied.supabaseProjectExists("owner-1", "project-1"), /^Error: Supabase request failed \(401\)$/);
+const redirected = await backend(runtime, async (_url, init) => {
+  assert.equal(init.redirect, "manual");
+  return new Response(null, { status: 302, headers: { Location: "https://unexpected.example.test" } });
+});
+await assert.rejects(redirected.supabaseProjectExists("owner-1", "project-1"), /^Error: Supabase request failed \(302\)$/);
 console.log("Supabase checks passed: HTTPS, ownership filters, pagination, field mapping, atomic task RPC, migration preservation and error handling.");

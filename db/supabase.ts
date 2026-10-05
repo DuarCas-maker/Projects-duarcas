@@ -51,7 +51,9 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const { url, secret } = config();
   const response = await fetch(`${url}${path}`, {
     ...init,
-    redirect: "error",
+    // Workers supports manual/follow only. Reject redirects below so the
+    // service credential can never be forwarded to another origin.
+    redirect: "manual",
     signal: AbortSignal.timeout(30_000),
     headers: {
       apikey: secret,
