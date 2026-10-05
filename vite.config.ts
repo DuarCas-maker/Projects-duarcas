@@ -4,6 +4,7 @@ import hostingConfig from "./.openai/hosting.json";
 import { readExecutionProfile } from "./scripts/execution-profile.mjs";
 import { sites } from "./build/sites-vite-plugin";
 import { connectorPreview } from "./build/connector-preview-plugin.mjs";
+import { localPreview } from "./build/local-preview-plugin";
 
 const SITE_CREATOR_PLACEHOLDER_DATABASE_ID =
   "00000000-0000-4000-8000-000000000000";
@@ -53,6 +54,9 @@ export default defineConfig(async ({ command }) => {
 
   return {
     server: {
+      ...(!managedLinux && process.env.PROJECT_OS_LOCAL_PREVIEW === "1"
+        ? { host: "127.0.0.1", strictPort: true }
+        : {}),
       ...(managedLinux
         ? { host: "0.0.0.0", allowedHosts: ["terminal.local"] }
         : {}),
@@ -61,8 +65,9 @@ export default defineConfig(async ({ command }) => {
         : {}),
     },
     plugins: [
+      localPreview(!managedLinux && command === "serve" && process.env.PROJECT_OS_LOCAL_PREVIEW === "1"),
       vinext(),
-      sites({ mockAuth: !managedLinux }),
+      sites({ mockAuth: false }),
       connectorPreview(),
       cloudflare({
         viteEnvironment: { name: "rsc", childEnvironments: ["ssr"] },

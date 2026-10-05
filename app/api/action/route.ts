@@ -10,7 +10,7 @@ import {
   supabaseProjectExists,
   updateSupabaseRow,
 } from "@/db/supabase";
-import { AuthenticationError, currentUserId } from "@/lib/current-user";
+import { WorkspaceConfigurationError, currentWorkspaceId } from "@/lib/workspace-context";
 
 export const dynamic = "force-dynamic";
 
@@ -21,7 +21,7 @@ const cleanId = (value: unknown) => cleanText(value, 100).replace(/[^a-zA-Z0-9_-
 
 export async function POST(request: Request) {
   try {
-    const userId = await currentUserId();
+    const userId = await currentWorkspaceId();
     const body = (await request.json()) as ActionPayload;
     if (isSupabaseConfigured()) return await handleSupabaseAction(userId, body);
 
@@ -84,7 +84,7 @@ export async function POST(request: Request) {
 
     return Response.json({ error: "Acción no soportada." }, { status: 400 });
   } catch (error) {
-    if (error instanceof AuthenticationError) return Response.json({ error: error.message }, { status: 401 });
+    if (error instanceof WorkspaceConfigurationError) return Response.json({ error: error.message }, { status: 503 });
     console.error("workspace_action_failed", error);
     return Response.json({ error: "No fue posible guardar el cambio." }, { status: 500 });
   }

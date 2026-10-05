@@ -5,6 +5,6 @@ declare namespace Cloudflare {
     SUPABASE_URL?: string;
     SUPABASE_SECRET_KEY?: string;
     PROJECT_OS_BACKEND?: "d1" | "supabase";
-    PROJECT_OS_OWNER_EMAIL?: string;
+    PROJECT_OS_WORKSPACE_ID?: string;
   }
 }

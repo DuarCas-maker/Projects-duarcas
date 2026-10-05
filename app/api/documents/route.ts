@@ -2,7 +2,7 @@ import { env } from "cloudflare:workers";
 import { getDb } from "@/db";
 import { ensureWorkspace, ensureWorkspaceBackend } from "@/db/workspace";
 import { knowledgeItems, projects } from "@/db/schema";
-import { AuthenticationError, currentUserId } from "@/lib/current-user";
+import { WorkspaceConfigurationError, currentWorkspaceId } from "@/lib/workspace-context";
 import { and, eq } from "drizzle-orm";
 import {
   deleteSupabaseDocument,
@@ -17,7 +17,7 @@ export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
   try {
-    const userId = await currentUserId();
+    const userId = await currentWorkspaceId();
     const data = await request.formData();
     const file = data.get("file");
     const projectId = String(data.get("projectId") ?? "").replace(/[^a-zA-Z0-9_-]/g, "");
@@ -50,7 +50,7 @@ export async function POST(request: Request) {
     await db.insert(knowledgeItems).values(item);
     return Response.json({ item }, { status: 201 });
   } catch (error) {
-    if (error instanceof AuthenticationError) return Response.json({ error: error.message }, { status: 401 });
+    if (error instanceof WorkspaceConfigurationError) return Response.json({ error: error.message }, { status: 503 });
     console.error("document_upload_failed", error);
     return Response.json({ error: "No fue posible almacenar el archivo." }, { status: 500 });
   }

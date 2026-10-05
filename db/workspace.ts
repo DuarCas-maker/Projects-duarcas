@@ -1,6 +1,6 @@
 import { and, desc, eq } from "drizzle-orm";
 import { env } from "cloudflare:workers";
-import { canClaimLegacyWorkspace } from "@/lib/current-user";
+import { canClaimLegacyWorkspace } from "@/lib/workspace-context";
 import { getDb } from "./index";
 import * as schema from "./schema";
 import { ensureSupabaseWorkspace, getSupabaseWorkspaceState, isSupabaseConfigured, type WorkspaceSnapshot } from "./supabase";
@@ -22,7 +22,7 @@ import {
 export async function ensureWorkspace(userId: string) {
   const db = getDb();
   // Older releases could bootstrap the personal workspace under this reserved
-  // development identity. Only the configured, signed-in owner may claim it.
+  // development identity. Only the server-configured workspace may claim it.
   if (userId !== "local-owner" && await canClaimLegacyWorkspace(userId)) {
     const legacy = await db.select({ id: schema.projects.id }).from(schema.projects).where(eq(schema.projects.userId, "local-owner")).limit(1);
     if (legacy.length && env.DB) {
