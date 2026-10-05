@@ -5,9 +5,17 @@ import "./project-os.css";
 export const metadata: Metadata = {
   title: "Project OS · Centro de mando personal",
   description: "Estado, contexto, tiempo y siguiente acción para todos tus proyectos.",
+  applicationName: "Project OS",
+  manifest: "/manifest.webmanifest",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "Project OS",
+  },
   icons: {
     icon: "/favicon.svg",
     shortcut: "/favicon.svg",
+    apple: "/favicon.svg",
   },
 };
 
