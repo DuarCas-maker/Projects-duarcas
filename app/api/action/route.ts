@@ -7,14 +7,17 @@ import {
   insertSupabaseRow,
   isSupabaseConfigured,
   SUPABASE_TABLES,
+  SupabaseConflictError,
   supabaseProjectExists,
   updateSupabaseRow,
 } from "@/db/supabase";
 import { WorkspaceConfigurationError, currentWorkspaceId } from "@/lib/workspace-context";
+import { CORE_ACTIONS, CoreValidationError } from "@/lib/core-commands";
+import { executeCoreCommand } from "@/db/core-mutations";
 
 export const dynamic = "force-dynamic";
 
-type ActionPayload = { action?: string; payload?: Record<string, unknown> };
+type ActionPayload = { action?: string; payload?: Record<string, unknown>; commandId?: string };
 
 const cleanText = (value: unknown, max = 500) => typeof value === "string" ? value.trim().slice(0, max) : "";
 const cleanId = (value: unknown) => cleanText(value, 100).replace(/[^a-zA-Z0-9_-]/g, "");
@@ -23,6 +26,11 @@ export async function POST(request: Request) {
   try {
     const userId = await currentWorkspaceId();
     const body = (await request.json()) as ActionPayload;
+    if (!body || typeof body !== "object" || Array.isArray(body) || (body.payload !== undefined && (!body.payload || typeof body.payload !== "object" || Array.isArray(body.payload)))) return Response.json({ error: "Entrada no válida." }, { status: 400 });
+    if (typeof body.action === "string" && CORE_ACTIONS.has(body.action)) {
+      const result = await executeCoreCommand(userId, body.action, body.payload ?? {}, body.commandId ?? crypto.randomUUID());
+      return Response.json(result, { status: body.action.startsWith("create_") && !result.replayed ? 201 : 200 });
+    }
     if (isSupabaseConfigured()) return await handleSupabaseAction(userId, body);
 
     await ensureWorkspace(userId);
@@ -84,6 +92,9 @@ export async function POST(request: Request) {
 
     return Response.json({ error: "Acción no soportada." }, { status: 400 });
   } catch (error) {
+    if (error instanceof SupabaseConflictError) return Response.json({ error: error.message }, { status: 409 });
+    if (error instanceof CoreValidationError) return Response.json({ error: error.message }, { status: error.status });
+    if (error instanceof SyntaxError) return Response.json({ error: "JSON no válido." }, { status: 400 });
     if (error instanceof WorkspaceConfigurationError) return Response.json({ error: error.message }, { status: 503 });
     console.error("workspace_action_failed", error);
     return Response.json({ error: "No fue posible guardar el cambio." }, { status: 500 });

@@ -18,7 +18,7 @@ Para iniciar el servidor en segundo plano y conservarlo abierto mientras revisas
 .\scripts\start-local-preview.ps1
 ```
 
-Abre http://127.0.0.1:3001/. El servidor escucha únicamente en este equipo. El iniciador comprueba que el puerto esté disponible y espera a que la aplicación responda. Los registros se guardan en la carpeta ignorada `outputs/`.
+Abre http://127.0.0.1:3001/. El servidor escucha únicamente en este equipo. El iniciador comprueba que el puerto esté disponible y espera a que la aplicación responda. Se inicia como un proceso oculto independiente para que no se cierre al terminar el trabajo de Codex. Si necesitas ver los registros, usa la ejecución en terminal que se muestra abajo.
 
 También puedes ejecutarlo en una terminal que debes mantener abierta:
 
@@ -41,6 +41,8 @@ Las variables de producción son independientes del archivo local `.env`. No cam
 
 La migración `supabase/migrations/20261005_0001_project_os.sql` crea las tablas, RLS, la función de creación atómica de tareas y el bucket privado `project-documents` con límite de 25 MB. Ya fue aplicada a la instancia actual; no debe repetirse para este cambio de acceso.
 
+Las migraciones `20261005_0002_core_commands.sql` y `20261005_0003_core_runtime_validation.sql` añaden y corrigen la operación transaccional del núcleo. Ya fueron aplicadas, en ese orden, a la instancia actual. No borran ni vuelven a importar los datos. La función solo puede ejecutarse con el rol de servicio del servidor; valida el espacio, dependencias, saldos y versiones de registros bajo un bloqueo por espacio.
+
 D1/R2 conserva la fuente original de la migración. Al activar Supabase, el servidor copia el espacio una vez y escribe un marcador de finalización al terminar. Las importaciones interrumpidas pueden reanudarse. Después, los cambios se guardan en Supabase y no se replican a D1/R2; los errores se muestran en vez de escribir silenciosamente en otro backend.
 
 ## Desarrollo y publicación
@@ -48,9 +50,20 @@ D1/R2 conserva la fuente original de la migración. Al activar Supabase, el serv
 - `node node_modules/typescript/bin/tsc --noEmit`: comprobar TypeScript.
 - `node --experimental-vm-modules scripts/check-supabase.mjs`: pruebas del adaptador de Supabase.
 - `node --experimental-vm-modules scripts/check-workspace-context.mjs`: comprobar selección del espacio sin login.
+- `node --experimental-vm-modules scripts/check-core.mjs`: comprobar proyectos, hitos, tareas, ciclos, bloqueos, pagos y el historial.
 - `node scripts/run-framework.mjs build`: construir el Worker y los archivos estáticos.
 - `npm run db:generate`: generar migraciones D1 solo después de cambiar el esquema.
 
 El perfil de ejecución se encuentra en el archivo ignorado `.sites-runtime/execution-profile.json`. En este equipo se utiliza el perfil portable. No es necesario Bash ni reinstalar dependencias para este cambio.
 
 Para publicar, reutiliza el proyecto identificado en `.openai/hosting.json`, guarda y sube el código exacto, construye desde ese estado y despliega una versión guardada siguiendo el flujo de Sites. No incluyas `.env`, secretos, bases locales, registros, `node_modules` ni `.sites-runtime` en el artefacto.
+
+## Núcleo de gestión
+
+- **Nuevo proyecto / Editar proyecto:** objetivo, tipo, estados, prioridades, fecha, resumen y siguiente acción. Archivar es reversible desde el mismo formulario; no elimina datos.
+- **Tareas:** edición de descripción, estado, duración, fecha, hito y dependencias del mismo proyecto. Se rechazan ciclos. Una tarea dependiente se desbloquea al completar sus requisitos.
+- **Hitos:** entregables ordenados con fecha y estado. No se puede completar un hito o proyecto con tareas pendientes.
+- **Pagos:** valor y moneda del proyecto, condiciones y registro de dinero recibido. Son importes enteros; no se transfieren fondos. El saldo no puede ser negativo ni cambiar de moneda después de recibir un pago.
+- **Historial:** cada operación se guarda atómicamente con su evento. Reintentar la misma operación no duplica el registro ni el pago. Los formularios solo se cierran después de confirmar el guardado y conservan los campos ante un error.
+
+La vista Hoy calcula sus prioridades, bloqueos y fechas con los datos guardados y la zona horaria de Bogotá. No se presentan números ficticios de progreso. La IA conversacional y las integraciones automáticas siguen pendientes de una fase posterior.

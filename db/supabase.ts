@@ -1,8 +1,12 @@
 import { env } from "cloudflare:workers";
-import type { getDemoState } from "@/lib/demo-data";
+import type { Workspace } from "@/lib/workspace-types";
+import type { CoreChange } from "@/lib/core-commands";
 
 type JsonRecord = Record<string, unknown>;
-type WorkspaceState = ReturnType<typeof getDemoState>;
+type WorkspaceState = Workspace;
+export class SupabaseConflictError extends Error {
+  constructor() { super("Los datos cambiaron mientras guardabas. Recarga y vuelve a intentar."); this.name = "SupabaseConflictError"; }
+}
 export type WorkspaceSnapshot = Record<keyof WorkspaceState, JsonRecord[]> & { evidence: JsonRecord[] };
 
 const TABLES = {
@@ -64,6 +68,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   });
 
   if (!response.ok) {
+    if (response.status === 409) throw new SupabaseConflictError();
     // Do not log upstream response bodies: a proxy can echo request secrets.
     throw new Error(`Supabase request failed (${response.status})`);
   }
@@ -167,6 +172,13 @@ export async function createSupabaseTask<T>(task: JsonRecord): Promise<T> {
     body: JSON.stringify({ p_task: toDatabase(task) }),
   });
   return fromDatabase<T>(result);
+}
+
+export async function applySupabaseChanges(userId: string, changes: CoreChange[]) {
+  return await request<{ replayed?: boolean; id?: string }>("/rest/v1/rpc/project_os_apply_changes", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ p_user_id: userId, p_changes: changes }),
+  });
 }
 
 export async function updateSupabaseRow(table: string, userId: string, id: string, patch: JsonRecord) {

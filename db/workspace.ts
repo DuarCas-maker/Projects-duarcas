@@ -1,6 +1,7 @@
 import { and, desc, eq } from "drizzle-orm";
 import { env } from "cloudflare:workers";
 import { canClaimLegacyWorkspace } from "@/lib/workspace-context";
+import { deriveWorkspaceState } from "@/lib/workspace-types";
 import { getDb } from "./index";
 import * as schema from "./schema";
 import { ensureSupabaseWorkspace, getSupabaseWorkspaceState, isSupabaseConfigured, type WorkspaceSnapshot } from "./supabase";
@@ -80,9 +81,9 @@ export async function ensureWorkspaceBackend(userId: string) {
 }
 
 export async function getWorkspaceState(userId: string) {
-  if (!isSupabaseConfigured()) return getD1WorkspaceState(userId);
+  if (!isSupabaseConfigured()) return deriveWorkspaceState(await getD1WorkspaceState(userId));
   await ensureWorkspaceBackend(userId);
-  return getSupabaseWorkspaceState(userId);
+  return deriveWorkspaceState(await getSupabaseWorkspaceState(userId));
 }
 
 export function owned(userId: string, column: typeof schema.tasks.userId, idColumn: typeof schema.tasks.id, id: string) {

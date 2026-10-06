@@ -423,3 +423,38 @@ button { cursor: pointer; }
 }
 
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; transition-duration: .01ms !important; } }
+
+.core-dialog { width: min(42rem, calc(100vw - 2rem)); max-width: 42rem; max-height: 90dvh; overflow-y: auto; }
+.core-dialog form { display: grid; gap: 1rem; }
+.core-form { display: grid; gap: 1rem; font-size: 1rem; }
+.core-form label { display: grid; gap: .4rem; min-width: 0; }
+.core-form label > span { font-size: .875rem; font-weight: 600; }
+.core-form input, .core-form textarea { font-size: 1rem; }
+.core-form [data-slot="select-trigger"] { width: 100%; min-width: 0; }
+.core-form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+.core-dependencies { display: grid; gap: .7rem; max-height: 15rem; overflow: auto; border: 1px solid var(--line, #dce3de); padding: 1rem; border-radius: .7rem; }
+.core-dependencies legend { padding: 0 .3rem; font-size: .875rem; font-weight: 600; }
+.core-dependencies label { display: flex; align-items: flex-start; gap: .7rem; cursor: pointer; }
+.core-dependencies small { display: block; font-weight: 400; color: #68766d; }
+.core-hint, .core-empty { color: #607168; font-size: .875rem; line-height: 1.6; }
+.core-error { padding: .8rem; background: #fff0ef; color: #a62d26; border-radius: .6rem; font-size: .875rem; }
+.core-milestone { display: flex; align-items: center; gap: 1rem; padding: 1rem 0; border-top: 1px solid #e6ebe7; }
+.core-milestone > div { flex: 1; min-width: 0; }
+.core-milestone h3 { font-size: 1rem; font-weight: 600; }
+.core-milestone p { margin: .3rem 0; font-size: 1rem; color: #607168; }
+.core-milestone small { font-size: .875rem; color: #607168; }
+.core-order { width: 2rem; height: 2rem; display: grid; place-items: center; background: #edf3ec; border-radius: .6rem; font-weight: 600; }
+.core-financial-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; margin: 1rem 0; }
+.core-financial-grid > div { padding: 1rem; background: #f1f5f1; border-radius: .7rem; display: grid; gap: .5rem; }
+.core-financial-grid small { font-size: .875rem; color: #607168; }
+.core-financial-grid strong { font-size: 1.2rem; overflow-wrap: anywhere; }
+.core-receipts { margin-top: 1.5rem; }
+.core-receipts h3 { font-weight: 600; font-size: 1rem; }
+.core-receipts article { display: flex; gap: 1rem; padding: 1rem 0; border-top: 1px solid #e6ebe7; font-size: .875rem; }
+.core-project-controls { display: flex; justify-content: flex-end; gap: .5rem; margin-top: -1rem; }
+.task-list.compact .task-row { grid-template-columns: 2rem minmax(0,1fr) auto 2rem auto; }
+.topbar-actions > [data-slot="button"] { white-space: nowrap; }
+@media (max-width: 900px) { .topbar { flex-wrap: wrap; gap: .6rem; } .topbar-actions { flex-wrap: wrap; justify-content: flex-end; } }
+@media (max-width: 640px) { .task-list.compact .task-row { grid-template-columns: 1.7rem minmax(0,1fr) auto; } .task-list.compact .task-row > [data-slot="button"] { grid-column: 2 / -1; justify-self: start; } .project-tabs [data-slot="tabs-list"] { flex-wrap: wrap; height: auto; } }
+.core-load-error { display: grid; gap: 1rem; padding: 2rem; }
+@media (max-width: 640px) { .core-form-row, .core-financial-grid { grid-template-columns: 1fr; } .core-milestone { flex-wrap: wrap; } .core-milestone > button { margin-left: 3rem; } .core-panel .section-heading { flex-wrap: wrap; gap: 1rem; } }
