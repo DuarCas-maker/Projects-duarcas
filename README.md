@@ -66,4 +66,17 @@ Para publicar, reutiliza el proyecto identificado en `.openai/hosting.json`, gua
 - **Pagos:** valor y moneda del proyecto, condiciones y registro de dinero recibido. Son importes enteros; no se transfieren fondos. El saldo no puede ser negativo ni cambiar de moneda después de recibir un pago.
 - **Historial:** cada operación se guarda atómicamente con su evento. Reintentar la misma operación no duplica el registro ni el pago. Los formularios solo se cierran después de confirmar el guardado y conservan los campos ante un error.
 
-La vista Hoy calcula sus prioridades, bloqueos y fechas con los datos guardados y la zona horaria de Bogotá. No se presentan números ficticios de progreso. La IA conversacional y las integraciones automáticas siguen pendientes de una fase posterior.
+La vista Hoy calcula sus prioridades, bloqueos y fechas con los datos guardados y la zona horaria de Bogotá. No se presentan números ficticios de progreso.
+
+## Daily OS e IA
+
+- Inbox: captura real, coincidencias por nombre claramente indicadas como reglas y propuestas manuales. Analizar con IA separa hechos, inferencias y sugerencias.
+- Aprobaciones: editar conserva el estado pendiente; aprobar crea la tarea con su origen y evidencia; rechazar no crea tareas. Operaciones atómicas con historial.
+- Calendario interno: disponibilidad editable, pausas, planificación por prioridad/vencimiento/dependencias, revisión previa, edición, aprobación y cancelación recuperable. Se conservan los compromisos aprobados y se rechazan solapamientos. Google Calendar todavía no está conectado.
+- Chat global y por proyecto: API real del servidor, sin respuestas simuladas. El contexto por proyecto excluye otros proyectos. Se incluyen registros acotados, no archivos completos, credenciales ni acceso de ejecución. GBrain y ejecución de Codex siguen pendientes.
+
+Variables exclusivamente del servidor: `OPENAI_API_KEY`, `OPENAI_MODEL` (inicialmente `gpt-4.1-mini`), `PROJECT_OS_AI_DAILY_LIMIT` (40 compartidas por día de Bogotá) y `PROJECT_OS_AI_CONTEXT_ENABLED=true` después de autorizar enviar el contexto a OpenAI. Sin esta última autorización, la conexión queda preparada pero las consultas se rechazan sin enviar datos. Localhost carga el archivo ignorado `.env.local`; producción recibe secretos mediante Sites.
+
+La API usa [Responses con salida estructurada](https://developers.openai.com/api/docs/guides/structured-outputs?api-mode=responses), `store:false`, límites de contexto/salida, 3 consultas por minuto y reservas duraderas atómicas. El límite cuenta intentos incluso fallidos, no es un límite monetario de la cuenta OpenAI. El historial, consumo y respuestas de IA se guardan en D1 del sitio; los proyectos y propuestas de producción permanecen en Supabase. El acceso público también comparte el historial y la cuota. Las sugerencias solo llegan a aprobaciones mediante una acción explícita y no pueden ejecutar SQL ni herramientas.
+
+La migración aditiva `20261006_0004_daily_os.sql` fue aplicada a Supabase. La migración D1 `0001_empty_blade.sql` incorpora el historial/cuota de IA. Para comprobar reglas y separación de contexto: `node --experimental-vm-modules scripts/check-daily.mjs`. Las pruebas SQL usan una transacción revertida y no dejan proyectos temporales.

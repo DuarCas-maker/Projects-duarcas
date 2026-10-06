@@ -14,6 +14,7 @@ import {
 import { WorkspaceConfigurationError, currentWorkspaceId } from "@/lib/workspace-context";
 import { CORE_ACTIONS, CoreValidationError } from "@/lib/core-commands";
 import { executeCoreCommand } from "@/db/core-mutations";
+import { DAILY_ACTIONS } from "@/lib/daily-commands";
 
 export const dynamic = "force-dynamic";
 
@@ -27,7 +28,7 @@ export async function POST(request: Request) {
     const userId = await currentWorkspaceId();
     const body = (await request.json()) as ActionPayload;
     if (!body || typeof body !== "object" || Array.isArray(body) || (body.payload !== undefined && (!body.payload || typeof body.payload !== "object" || Array.isArray(body.payload)))) return Response.json({ error: "Entrada no válida." }, { status: 400 });
-    if (typeof body.action === "string" && CORE_ACTIONS.has(body.action)) {
+    if (typeof body.action === "string" && (CORE_ACTIONS.has(body.action) || DAILY_ACTIONS.has(body.action))) {
       const result = await executeCoreCommand(userId, body.action, body.payload ?? {}, body.commandId ?? crypto.randomUUID());
       return Response.json(result, { status: body.action.startsWith("create_") && !result.replayed ? 201 : 200 });
     }

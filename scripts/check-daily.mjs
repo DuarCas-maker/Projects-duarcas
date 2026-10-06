@@ -1,0 +1,67 @@
+import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import vm from "node:vm";
+import ts from "typescript";
+const context = vm.createContext({ crypto, Intl, Date, Set, Map });
+const modules = new Map();
+async function mod(name) {
+  if (modules.has(name)) return modules.get(name);
+  const source = await readFile(new URL(`../lib/${name}.ts`, import.meta.url), "utf8");
+  const module = new vm.SourceTextModule(ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } }).outputText, { context }); modules.set(name, module);
+  await module.link((specifier) => mod(specifier.split("/").at(-1))); return module;
+}
+const daily = await mod("daily-commands"), types = await mod("workspace-types"), ai = await mod("ai-context");
+await daily.evaluate(); await types.evaluate(); await ai.evaluate();
+const { buildCoreCommand, CoreValidationError } = modules.get("core-commands").namespace;
+const { buildDailyCommand } = daily.namespace, { bogotaDay, addDays, dayOf, planDay, rankTask } = modules.get("daily-engine").namespace;
+const { emptyWorkspace, deriveWorkspaceState } = types.namespace, { aiContext, validateAiResult } = ai.namespace;
+let state = emptyWorkspace(); const userId = `daily-check-${crypto.randomUUID()}`, plans = [];
+const tables = { projects:"projects",tasks:"tasks",milestones:"milestones",task_dependencies:"dependencies",project_financials:"financials",project_events:"events",ai_suggestions:"suggestions",inbox_items:"inbox",calendar_blocks:"calendar" };
+function run(action,payload) {
+  const build = ["create_project","create_task","update_task_status"].includes(action) ? buildCoreCommand : buildDailyCommand;
+  const plan = build(state,userId,action,payload,crypto.randomUUID()); plans.push(plan);
+  for (const change of plan.changes) { const key = tables[change.table], row = Object.fromEntries(Object.entries(change.row).map(([key,value]) => [key.replace(/_([a-z])/g,(_,c)=>c.toUpperCase()),value])); state[key] = state[key].filter((item)=>item.id!==row.id); if (change.kind!=="delete") state[key].push(row); }
+  state=deriveWorkspaceState(state); return plan.id;
+}
+const invalid=(action,payload)=>assert.throws(()=>buildDailyCommand(state,userId,action,payload,crypto.randomUUID()),CoreValidationError);
+const projectId=run("create_project",{name:"Proyecto de verificación",operationalStatus:"Activo"});
+const another=run("create_project",{name:"Otro proyecto de verificación",operationalStatus:"Activo"});
+const first=run("create_task",{projectId,title:"Preparar información",estimatedMinutes:45,priority:5});
+const blocked=run("create_task",{projectId,title:"Tarea dependiente",dependsOnTaskIds:[first]});
+const foreign=run("create_task",{projectId:another,title:"Información fuera del contexto"});
+const inboxId=run("create_inbox",{content:"Proyecto de verificación: revisar el siguiente entregable"});
+assert.equal(state.inbox[0].detectedProjectId,projectId);
+const count=state.tasks.length;
+const proposal=run("create_task_suggestion",{projectId,inboxId,title:"Borrador de propuesta"});
+assert.equal(state.tasks.length,count); assert.equal(state.inbox[0].status,"processed");
+run("edit_suggestion",{id:proposal,title:"Propuesta editada",estimatedMinutes:25});
+assert.equal(state.suggestions[0].status,"pending");
+run("suggestion_status",{id:proposal,status:"approved"});
+assert.equal(state.tasks.length,count+1); assert.equal(state.tasks.at(-1).title,"Propuesta editada"); assert.equal(state.tasks.at(-1).sourceId,proposal);
+invalid("suggestion_status",{id:proposal,status:"approved"});
+const rejected=run("create_task_suggestion",{projectId,title:"No crear esta tarea"});
+run("suggestion_status",{id:rejected,status:"rejected"}); assert.equal(state.tasks.length,count+1);
+const day=addDays(bogotaDay(),1);
+const calendarId=run("create_calendar",{projectId,title:"Compromiso existente",day,start:"09:00",end:"10:00"});
+run("approve_calendar",{ids:[calendarId]});
+const generated=planDay(state,{day,start:"08:00",end:"12:00",breakMinutes:15});
+assert.ok(generated.blocks.length); assert.ok(!generated.blocks.some((block)=>block.taskId===blocked));
+assert.ok(generated.blocks.every((block)=>Date.parse(block.endsAt)<=Date.parse(`${day}T09:00:00-05:00`) || Date.parse(block.startsAt)>=Date.parse(`${day}T10:00:00-05:00`)));
+run("generate_plan",{day,start:"08:00",end:"12:00",breakMinutes:15}); assert.equal(state.calendar.find((item)=>item.id===calendarId).status,"approved");
+const pending=state.calendar.filter((item)=>item.status==="proposed"); run("approve_calendar",{ids:pending.map((item)=>item.id)});
+const collision=run("create_calendar",{projectId,title:"Solapamiento prohibido",day,start:"09:15",end:"09:45"});
+const collisionPlan={...buildDailyCommand(state,userId,"cancel_calendar",{ids:[collision]},crypto.randomUUID())};
+collisionPlan.changes.find((change)=>change.table==="calendar_blocks").row.status="approved";
+invalid("approve_calendar",{ids:[collision]});
+run("cancel_calendar",{ids:[collision]});
+assert.ok(rankTask(state.tasks.find((task)=>task.id===first),state).reason.includes("desbloquea"));
+const pack=aiContext(state,projectId); assert.ok(!pack.sources.has(foreign)); assert.ok(!pack.text.includes("Información fuera del contexto"));
+const result={answer:"Resumen",facts:[{text:"Proyecto activo",sourceIds:[projectId]}],inferences:[],suggestions:[]};
+assert.equal(validateAiResult(result,pack.projectIds,pack.sources),result);
+assert.throws(()=>validateAiResult({...result,facts:[{text:"Inventado",sourceIds:["fake"]}]},pack.projectIds,pack.sources));
+if (process.argv.includes("--sql")) {
+  const rpc=(changes)=>`public.project_os_apply_changes('${userId}', '${JSON.stringify(changes).replaceAll("'","''")}'::jsonb)`;
+  const sql=plans.map((plan)=>`select ${rpc(plan.changes)};`).join("\n");
+  const stale=structuredClone(plans.find((plan)=>plan.changes.some((change)=>change.row.status==="approved" && change.table==="ai_suggestions")).changes); stale.find((change)=>change.table==="project_events").row.id=crypto.randomUUID();
+  console.log(`begin;\n${sql}\nselect ${rpc(plans.find((plan)=>plan.id===proposal).changes)};\ndo $$ begin\nbegin perform ${rpc(collisionPlan.changes)}; raise exception 'Overlap incorrectly accepted'; exception when unique_violation then null; end;\nif exists (select 1 from public.calendar_blocks where id='${collision}' and status='approved') then raise exception 'Overlap persisted'; end if;\nif (select count(*) from public.tasks where user_id='${userId}') <> ${state.tasks.length} then raise exception 'Approval task count failed'; end if;\nif not exists (select 1 from public.ai_suggestions where id='${proposal}' and status='approved') then raise exception 'Approval status failed'; end if;\nend $$;\nrollback;`);
+} else console.log("Daily OS checks passed: capture, proposals without premature tasks, edit/approve/reject, dependencies, planning around commitments, overlap rejection, cancellation, scoped AI context and evidence validation.");

@@ -457,4 +457,41 @@ button { cursor: pointer; }
 @media (max-width: 900px) { .topbar { flex-wrap: wrap; gap: .6rem; } .topbar-actions { flex-wrap: wrap; justify-content: flex-end; } }
 @media (max-width: 640px) { .task-list.compact .task-row { grid-template-columns: 1.7rem minmax(0,1fr) auto; } .task-list.compact .task-row > [data-slot="button"] { grid-column: 2 / -1; justify-self: start; } .project-tabs [data-slot="tabs-list"] { flex-wrap: wrap; height: auto; } }
 .core-load-error { display: grid; gap: 1rem; padding: 2rem; }
+.core-form-error { padding: .9rem; margin: .7rem 0; background: #fff0ef; color: #962b25; border-radius: .6rem; font-size: .95rem; overflow-wrap: anywhere; }
+.core-form-error button { text-decoration: underline; margin-left: .4rem; }
+.daily-hint { display: block; color: #607168; font-size: .875rem; line-height: 1.6; margin-top: .7rem; }
+.daily-actions { display: flex; align-items: center; flex-wrap: wrap; gap: .6rem; margin-top: .8rem; }
+.planning-controls .core-form-row { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.planning-controls label { display: grid; gap: .5rem; font-size: .875rem; font-weight: 600; }
+.planning-controls input { font-size: 1rem; }
+.daily-calendar h2, .plan-preview h2 { font-size: 1.3rem; font-weight: 650; margin-bottom: 1rem; }
+.daily-calendar article { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 1rem; padding: 1.2rem 0; border-top: 1px solid #e6ebe7; }
+.daily-calendar article h3 { font-size: 1rem; font-weight: 600; margin: .3rem 0; }
+.daily-calendar time, .plan-preview time { color: #526653; font-weight: 600; font-size: .875rem; }
+.daily-calendar small { font-size: .875rem; color: #607168; }
+.plan-preview article { display: grid; gap: .4rem; padding: 1rem 0; border-top: 1px solid #e6ebe7; }
+.plan-preview article p { color: #607168; font-size: .875rem; }
+.daily-inbox article { padding: 1.2rem 0; border-top: 1px solid #e6ebe7; }
+.daily-inbox p { font-size: 1rem; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; }
+.daily-inbox small { display: block; color: #607168; font-size: .875rem; margin-top: .5rem; }
+.daily-approvals { width: min(36rem, 100vw) !important; max-width: 36rem !important; padding: 1.2rem; overflow-y: auto; background: #fff; }
+.daily-approvals [data-slot="sheet-header"] { padding: .5rem .5rem 1rem; }
+.daily-approvals [data-slot="sheet-title"] { font-size: 1.5rem; }
+.daily-approvals .suggestion-list { padding: 0; }
+.daily-approvals .suggestion-list article { padding: 1.2rem; }
+.daily-approvals dd, .daily-approvals p { overflow-wrap: anywhere; font-size: 1rem; line-height: 1.6; }
+.ai-messages { display: grid; gap: 1.8rem; max-height: 65dvh; min-height: 16rem; overflow-y: auto; padding: 1rem 0; }
+.ai-exchange .user { display: flex; justify-content: flex-end; margin-bottom: 1rem; }
+.ai-exchange .user p { background: #eef5df; border-radius: .8rem; padding: .8rem 1rem; max-width: 85%; font-size: 1rem; white-space: pre-wrap; }
+.ai-answer { font-size: 1rem; line-height: 1.7; overflow-wrap: anywhere; }
+.ai-answer > p { white-space: pre-wrap; }
+.ai-answer section { margin: 1rem 0; padding: 1rem; background: #f5f7f3; border-radius: .8rem; }
+.ai-answer h4 { font-size: .95rem; font-weight: 650; color: #344a31; margin-bottom: .6rem; }
+.ai-answer section > div + div { border-top: 1px solid #dde5d7; padding-top: .8rem; margin-top: .8rem; }
+.ai-answer small { display: block; font-size: .875rem; color: #607168; line-height: 1.6; }
+.ai-welcome { display: grid; align-content: start; gap: 1rem; padding: 1rem; font-size: 1rem; color: #607168; }
+.ai-starters { display: flex; flex-wrap: wrap; gap: .6rem; }
+.ai-starters button { white-space: normal; height: auto; padding: .7rem 1rem; text-align: left; }
+.ai-analysis-dialog { max-height: 85dvh; overflow-y: auto; }
+@media (max-width: 700px) { .planning-controls .core-form-row { grid-template-columns: repeat(2, minmax(0,1fr)); } .daily-approvals { padding: .8rem; } }
 @media (max-width: 640px) { .core-form-row, .core-financial-grid { grid-template-columns: 1fr; } .core-milestone { flex-wrap: wrap; } .core-milestone > button { margin-left: 3rem; } .core-panel .section-heading { flex-wrap: wrap; gap: 1rem; } }

@@ -101,3 +101,11 @@ export const repositories = sqliteTable("repositories", {
   provider: text("provider").notNull().default("github"), owner: text("owner").notNull(), repo: text("repo").notNull(), defaultBranch: text("default_branch").notNull().default("main"),
   lastSync: text("last_sync"), status: text("status").notNull().default("disconnected"),
 });
+
+// Server-only AI usage/history. Project records remain in the selected backend.
+export const aiRuns = sqliteTable("ai_runs", {
+  id: text("id").primaryKey(), userId: text("user_id").notNull(), scope: text("scope").notNull(),
+  kind: text("kind").notNull(), query: text("query").notNull(), result: text("result").notNull().default(""),
+  status: text("status").notNull(), dayKey: text("day_key").notNull(), createdAt: text("created_at").notNull(),
+  model: text("model").notNull(), inputTokens: integer("input_tokens").notNull().default(0), outputTokens: integer("output_tokens").notNull().default(0),
+}, (table) => [index("idx_ai_runs_user_day").on(table.userId, table.dayKey), index("idx_ai_runs_user_scope_created").on(table.userId, table.scope, table.createdAt)]);
