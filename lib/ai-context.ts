@@ -1,26 +1,36 @@
 import type { Workspace } from "./workspace-types";
 import type { AiResult } from "./ai-types";
 import { bogotaDay, rankTask } from "./daily-engine";
+import type { BrainMemory } from "./brain-types";
+import { readMeeting } from "./meetings";
 
-export function aiContext(state: Workspace, projectId?: string, inboxId?: string) {
+export function aiContext(state: Workspace, projectId?: string, inboxId?: string, memory: BrainMemory = {status:"not_configured",hits:[]}) {
   if (projectId && !state.projects.some((item) => item.id === projectId)) throw new Error("Proyecto no encontrado");
   const projects = state.projects.filter((item) => !projectId || item.id === projectId);
   const ids = new Set(projects.map((item) => item.id));
   const records: { id: string; type: string; data: unknown }[] = [];
   const add = (type: string, rows: { id: string }[]) => rows.forEach((row) => records.push({ id: row.id, type, data: row }));
   add("project", projects.map(({ userId: _, ...row }) => row));
+  add("gbrain", memory.hits.filter((hit) => ids.has(hit.projectId)).map((hit) => ({ ...hit, title: hit.sourceReference })));
   const scoped = state.tasks.filter((item) => ids.has(item.projectId));
   add("task", scoped.sort((a, b) => rankTask(b, state).score - rankTask(a, state).score).slice(0, 70).map((task) => { const { userId: _, ...row } = task; return { ...row, priorityReason: rankTask(task, state).reason }; }));
   add("milestone", state.milestones.filter((item) => ids.has(item.projectId)).slice(0, 30).map(({ userId: _, ...row }) => row));
   add("financial", state.financials.filter((item) => ids.has(item.projectId)).map(({ userId: _, ...row }) => row));
   add("event", state.events.filter((item) => ids.has(item.projectId)).sort((a, b) => b.eventDate.localeCompare(a.eventDate)).slice(0, 35).map(({ userId: _, ...row }) => row));
-  add("knowledge", state.knowledge.filter((item) => ids.has(item.projectId)).slice(0, 15).map(({ userId: _, storageKey: _key, ...row }) => row));
+  add("knowledge", state.knowledge.filter((item) => ids.has(item.projectId)).slice(0, 15).map(item => {
+    const {userId:_,storageKey:_key,...row} = item;
+    if (item.itemType !== "meeting") return row;
+    const meeting = readMeeting(item);
+    // Keep private storage paths/hashes out of AI prompts. Actual transcript
+    // evidence is retrieved through the scoped GBrain bridge after indexing.
+    return {...row,sourceReference:meeting ? `Reunión del ${meeting.date}${meeting.driveUrl ? ` · Video de referencia: ${meeting.driveUrl}` : ""}` : "Ficha de reunión no disponible"};
+  }));
   add("inbox", state.inbox.filter((item) => inboxId ? item.id === inboxId : !projectId || (item.detectedProjectId && ids.has(item.detectedProjectId))).slice(0, 15).map(({ userId: _, ...row }) => row));
   // Retain complete records rather than truncating JSON; bound cost and input.
   const selected: typeof records = []; let size = 0;
   for (const record of records) { const chars = JSON.stringify(record).length; if (size + chars > 32000 && record.type !== "project") continue; selected.push(record); size += chars; }
   const sources = new Set(selected.map((item) => item.id));
-  return { sources, projectIds: ids, text: JSON.stringify({ today: bogotaDay(), timezone: "America/Bogota", scope: projectId ?? "portfolio", integrations: { googleCalendar: "not_connected", gbrain: "not_connected", codexExecution: "not_connected" }, records: selected }), labels: Object.fromEntries(selected.map((item) => [item.id, `${item.type}: ${(item.data as { title?: string; name?: string; content?: string }).title ?? (item.data as { name?: string }).name ?? (item.data as { content?: string }).content?.slice(0, 120) ?? item.id}`])) };
+  return { sources, projectIds: ids, text: JSON.stringify({ today: bogotaDay(), timezone: "America/Bogota", scope: projectId ?? "portfolio", integrations: { googleCalendar: "not_connected", gbrain: memory.status, codexExecution: "not_connected" }, memoryWarning: memory.warning, records: selected }), labels: Object.fromEntries(selected.map((item) => [item.id, `${item.type}: ${(item.data as { title?: string; name?: string; content?: string }).title ?? (item.data as { name?: string }).name ?? (item.data as { content?: string }).content?.slice(0, 120) ?? item.id}`])) };
 }
 
 export function validateAiResult(value: unknown, projectIds: Set<string>, sources: Set<string>): AiResult {

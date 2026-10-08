@@ -8,6 +8,9 @@ import { CoreValidationError, type CoreChange } from "@/lib/core-commands";
 import { persistCorePlan } from "@/db/core-mutations";
 import { SupabaseConflictError } from "@/db/supabase";
 import type { AiResult } from "@/lib/ai-types";
+import { recallMemory } from "@/lib/brain-provider";
+import { safeMemoryText } from "@/lib/brain-content";
+import type { BrainMemory } from "@/lib/brain-types";
 
 export const dynamic = "force-dynamic";
 const json = (value: unknown, status = 200) => Response.json(value, { status, headers: { "Cache-Control": "no-store" } });
@@ -63,11 +66,15 @@ export async function POST(request: Request) {
       if (existing.status === "completed") return json({ id: existing.id, query, ...JSON.parse(existing.result), replayed: true });
       throw new AiError(existing.status === "pending" ? "La consulta sigue en curso. Revisa el historial antes de consultar otra vez." : "La consulta anterior falló. Envía una consulta nueva para volver a intentarlo.", 409);
     }
-    const context = aiContext(state, projectId, inboxId), history = kind === "chat" ? (await aiStatus(userId, scope)).history : [];
+    const history = kind === "chat" ? (await aiStatus(userId, scope)).history : [];
     await reserveAiRun(userId, requestId, scope, String(kind), query); reserved = { userId, id: requestId };
+    let memory: BrainMemory;
+    try { memory = await recallMemory(userId,projectId ? [projectId] : state.projects.map((item) => item.id),safeMemoryText(query),requestId); }
+    catch { memory = {status:"unavailable",hits:[],warning:"No se pudo consultar GBrain. Esta respuesta utiliza únicamente los registros de Project OS."}; }
+    const context = aiContext(state, projectId, inboxId, memory);
     const output = await requestProjectAi(context.text, query, history);
     const response = validateAiResult(output.response, context.projectIds, context.sources);
-    const result = { response, sources: context.labels, inboxId };
+    const result = { response, sources: context.labels, inboxId, memory: {status:memory.status,count:memory.hits.length,warning:memory.warning} };
     await finishAiRun(userId, requestId, result, output.usage?.input_tokens, output.usage?.output_tokens);
     return json({ id: requestId, query, ...result });
   } catch (error) { if (reserved) await failAiRun(reserved.userId, reserved.id).catch(() => undefined); return fail(error); }

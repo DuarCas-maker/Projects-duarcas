@@ -109,3 +109,21 @@ export const aiRuns = sqliteTable("ai_runs", {
   status: text("status").notNull(), dayKey: text("day_key").notNull(), createdAt: text("created_at").notNull(),
   model: text("model").notNull(), inputTokens: integer("input_tokens").notNull().default(0), outputTokens: integer("output_tokens").notNull().default(0),
 }, (table) => [index("idx_ai_runs_user_day").on(table.userId, table.dayKey), index("idx_ai_runs_user_scope_created").on(table.userId, table.scope, table.createdAt)]);
+
+// Server-only bridge, like AI history. Operational projects may live in
+// Supabase, so no foreign key to the optional local demonstration projects.
+export const projectBrainSources = sqliteTable("project_brain_sources", {
+  id: text("id").primaryKey(), userId: text("user_id").notNull(), projectId: text("project_id").notNull(),
+  knowledgeId: text("knowledge_id").notNull(), title: text("title").notNull(),
+  brainId: text("brain_id").notNull(), sourceId: text("source_id").notNull(), sourceType: text("source_type").notNull(),
+  externalReference: text("external_reference").notNull(), contentHash: text("content_hash").notNull(),
+  requestId: text("request_id").notNull(), status: text("status").notNull(), error: text("error").notNull().default(""),
+  indexedAt: text("indexed_at"), createdAt: text("created_at").notNull(),
+}, (table) => [index("idx_brain_sources_user_project").on(table.userId, table.projectId)]);
+
+export const brainRequests = sqliteTable("brain_requests", {
+  id: text("id").primaryKey(), userId: text("user_id").notNull(), projectId: text("project_id").notNull(),
+  kind: text("kind").notNull(), payloadHash: text("payload_hash").notNull(), status: text("status").notNull(),
+  dayKey: text("day_key").notNull(), createdAt: text("created_at").notNull(),
+  leaseUntil: text("lease_until").notNull(), attempts: integer("attempts").notNull().default(1), result: text("result").notNull().default(""),
+}, (table) => [index("idx_brain_requests_user_day").on(table.userId, table.dayKey)]);

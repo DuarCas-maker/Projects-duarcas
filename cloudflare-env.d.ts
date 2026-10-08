@@ -10,5 +10,11 @@ declare namespace Cloudflare {
     OPENAI_MODEL?: string;
     PROJECT_OS_AI_DAILY_LIMIT?: string;
     PROJECT_OS_AI_CONTEXT_ENABLED?: string;
+    GBRAIN_URL?: string;
+    GBRAIN_SOURCE_ID?: string;
+    GBRAIN_CLIENT_ID?: string;
+    GBRAIN_CLIENT_SECRET?: string;
+    PROJECT_OS_BRAIN_ENABLED?: string;
+    PROJECT_OS_BRAIN_DAILY_LIMIT?: string;
   }
 }

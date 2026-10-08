@@ -210,3 +210,15 @@ export async function deleteSupabaseDocument(key: string) {
 }
 
 export const SUPABASE_TABLES = TABLES;
+
+// Read only the private object selected by a workspace-owned knowledge row.
+// No browser-supplied URL or signed public URL is accepted.
+export async function getSupabaseDocumentBytes(key: string, maxBytes: number) {
+  const runtime = config();
+  const response = await fetch(`${runtime.url}/storage/v1/object/authenticated/project-documents/${key.split("/").map(encodeURIComponent).join("/")}`, {
+    redirect: "manual", signal: AbortSignal.timeout(15000),
+    headers: { apikey: runtime.secret, Authorization: `Bearer ${runtime.secret}` },
+  });
+  if (!response.ok) throw new Error("Private document unavailable");
+  const { boundedDocumentBytes } = await import("@/lib/brain-documents"); return boundedDocumentBytes(response,maxBytes);
+}

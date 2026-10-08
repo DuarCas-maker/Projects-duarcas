@@ -41,7 +41,7 @@ export default defineConfig(async ({ command }) => {
   // Only the local Worker receives these values; never define client constants
   // or embed local credentials in a production build.
   const localEnv = command === "serve" ? loadEnv("development", process.cwd(), "") : {};
-  const aiVars = Object.fromEntries(["OPENAI_API_KEY", "OPENAI_MODEL", "PROJECT_OS_AI_DAILY_LIMIT", "PROJECT_OS_AI_CONTEXT_ENABLED"].filter((key) => localEnv[key]).map((key) => [key, localEnv[key]]));
+  const aiVars = Object.fromEntries(["OPENAI_API_KEY", "OPENAI_MODEL", "PROJECT_OS_AI_DAILY_LIMIT", "PROJECT_OS_AI_CONTEXT_ENABLED", "GBRAIN_URL", "GBRAIN_SOURCE_ID", "GBRAIN_CLIENT_ID", "GBRAIN_CLIENT_SECRET", "PROJECT_OS_BRAIN_ENABLED", "PROJECT_OS_BRAIN_DAILY_LIMIT"].filter((key) => localEnv[key]).map((key) => [key, localEnv[key]]));
   // Use Miniflare's local Request.cf placeholder unless fetching is requested.
   process.env.CLOUDFLARE_CF_FETCH_ENABLED ??= "false";
   process.env.WRANGLER_SEND_METRICS ??= "false";
