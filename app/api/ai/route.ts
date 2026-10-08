@@ -34,7 +34,7 @@ export async function POST(request: Request) {
     if (body.kind === "save_suggestions") {
       if (typeof body.runId !== "string" || !idPattern.test(body.runId)) throw new AiError("Consulta no válida.", 400);
       const run = await findAiRun(userId, body.runId);
-      if (!run || run.status !== "completed") throw new AiError("Respuesta no encontrada.", 404);
+      if (!run || run.status !== "completed" || !["chat","analyze_inbox"].includes(run.kind)) throw new AiError("Respuesta no encontrada.", 404);
       if (state.events.some((event) => event.id === run.id)) return json({ state, saved: true, replayed: true });
       const stored = JSON.parse(run.result) as { response: AiResult; sources: Record<string, string>; inboxId?: string };
       if (!stored.response.suggestions.length) throw new AiError("Esta respuesta no contiene tareas propuestas.", 400);

@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { MEETING_ACCEPT, driveVideoUrl, readMeeting } from "@/lib/meetings";
 import type { Workspace } from "@/lib/workspace-types";
+import { MeetingAnalysisPanel } from "./meeting-analysis";
 
 export function MeetingResources({state,projectId,acceptState}: {state:Workspace;projectId:string;acceptState:(state:Workspace)=>void}) {
   const [open,setOpen] = useState(false), [selected,setSelected] = useState<string|null>(null), [busy,setBusy] = useState(false), [error,setError] = useState("");
@@ -51,6 +52,7 @@ export function MeetingResources({state,projectId,acceptState}: {state:Workspace
       <div className="meeting-detail-files">{current?.meeting?.files.map(file => <div key={file.role}><FileText size={22}/><div><strong>{file.role === "transcript" ? "Transcripción completa" : "Notas de la reunión"}</strong><p>{file.name}</p><small>{Math.ceil(file.size/1024)} KiB</small></div><Button variant="outline" size="sm" asChild><a href={`/api/meetings?id=${encodeURIComponent(current.item.id)}&role=${file.role}`} download><Download size={15}/> Descargar</a></Button></div>)}</div>
       {current?.meeting?.driveUrl && <Button asChild><a href={current.meeting.driveUrl} target="_blank" rel="noopener noreferrer"><Video size={17}/> Ver video en Drive</a></Button>}
       <p className="daily-hint">Para buscar dentro de estos documentos, procesa la reunión desde las fuentes de GBrain. El enlace de Drive no se analiza automáticamente.</p>
+      {current?.meeting && <MeetingAnalysisPanel key={current.item.id} meetingId={current.item.id} fingerprint={current.meeting.fingerprint} projectId={projectId} state={state} acceptState={acceptState}/>}
     </DialogContent></Dialog>
   </section>;
 }
