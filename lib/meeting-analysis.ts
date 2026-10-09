@@ -6,7 +6,7 @@ export type FindingKind = keyof typeof FINDING_LABELS;
 export type MeetingFinding = {id:string;kind:FindingKind;title:string;description:string;quote:string;date:string|null;confidence:number;priority:number;urgency:number;estimatedMinutes:number;part:number};
 export type MeetingPart = {version:1;meetingId:string;fingerprint:string;contentHash:string;part:number;totalParts:number;summary:string;findings:MeetingFinding[]};
 export type MeetingAnalysis = {status:"not_started"|"partial"|"ready";completedParts:number;totalParts:number;findings:MeetingFinding[];summaries:string[]};
-export class MeetingEvidenceError extends Error {constructor(public code:string){super("La IA devolvió hallazgos sin evidencia verificable. No se aplicó ningún cambio.");}}
+export class MeetingEvidenceError extends Error {constructor(public code:string){super(["quote","evidence_id"].includes(code)?"No se pudo verificar la cita de un hallazgo. Reintenta el fragmento; no se aplicó ningún cambio.":code==="date"?"La IA devolvió una fecha no válida. Reintenta el fragmento; no se aplicó ningún cambio.":"La respuesta de IA no cumple el formato del análisis. Reintenta el fragmento; no se aplicó ningún cambio.");}}
 export const normalizedTitle = (title:string) => title.normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().replace(/[^a-z0-9]+/g," ").trim();
 export function similarTask(title:string, other:string) {
   const a=normalizedTitle(title),b=normalizedTitle(other);
