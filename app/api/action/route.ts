@@ -25,7 +25,7 @@ const cleanId = (value: unknown) => cleanText(value, 100).replace(/[^a-zA-Z0-9_-
 
 export async function POST(request: Request) {
   try {
-    const userId = await currentWorkspaceId();
+    const userId = await currentWorkspaceId(request);
     const body = (await request.json()) as ActionPayload;
     if (!body || typeof body !== "object" || Array.isArray(body) || (body.payload !== undefined && (!body.payload || typeof body.payload !== "object" || Array.isArray(body.payload)))) return Response.json({ error: "Entrada no válida." }, { status: 400 });
     if (typeof body.action === "string" && (CORE_ACTIONS.has(body.action) || DAILY_ACTIONS.has(body.action))) {
@@ -96,7 +96,7 @@ export async function POST(request: Request) {
     if (error instanceof SupabaseConflictError) return Response.json({ error: error.message }, { status: 409 });
     if (error instanceof CoreValidationError) return Response.json({ error: error.message }, { status: error.status });
     if (error instanceof SyntaxError) return Response.json({ error: "JSON no válido." }, { status: 400 });
-    if (error instanceof WorkspaceConfigurationError) return Response.json({ error: error.message }, { status: 503 });
+    if (error instanceof WorkspaceConfigurationError) return Response.json({ error: error.message }, { status: error.status });
     console.error("workspace_action_failed", error);
     return Response.json({ error: "No fue posible guardar el cambio." }, { status: 500 });
   }

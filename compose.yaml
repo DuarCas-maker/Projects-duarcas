@@ -1,0 +1,17 @@
+services:
+  project-os:
+    build: .
+    restart: unless-stopped
+    init: true
+    env_file: .env.production
+    environment:
+      PROJECT_OS_BACKEND: supabase
+      PROJECT_OS_REQUIRE_EXISTING_WORKSPACE: "true"
+    ports:
+      - "127.0.0.1:3001:3000"
+    volumes:
+      - project_os_data:/data
+    security_opt:
+      - no-new-privileges:true
+volumes:
+  project_os_data:

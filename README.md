@@ -1,62 +1,81 @@
-# Project OS
+# Projects-duarcas · Project OS
 
-Aplicación personal de gestión de proyectos, tareas, calendario, bandeja de entrada y documentos. Implementada con React, Vinext y un Worker de Sites.
+Gestor personal de proyectos, tareas, reuniones, contexto y memoria. Mantiene el alojamiento actual en Sites y añade una versión Node/Next standalone para Docker.
 
-## Acceso sin login
+## Acceso privado con Supabase
 
-La aplicación no usa autenticación de ChatGPT ni de Supabase. Todas las visitas comparten el espacio indicado por `PROJECT_OS_WORKSPACE_ID`, una variable exclusivamente del servidor. El identificador no se obtiene de cookies, encabezados de identidad ni parámetros del visitante.
+Correo y contraseña se validan contra **el Supabase ya conectado a Project OS**. No se requiere una cuenta de ChatGPT. Solo el correo configurado en `PROJECT_OS_OWNER_EMAIL` puede acceder; opcionalmente `PROJECT_OS_OWNER_ID` fija su UUID de Supabase.
 
-La publicación de Sites debe tener acceso **público**. Cualquiera con el enlace puede consultar y editar los datos del espacio compartido. Esto es deliberado; no es un modo privado ni un sistema multiusuario. Las claves de Supabase siguen exclusivamente en el servidor, y las tablas mantienen RLS para impedir el acceso directo con las claves de cliente.
+- No hay registro público ni creación automática de usuarios.
+- El usuario debe existir en Supabase Auth, con correo confirmado y contraseña. En Studio: Authentication → Users → Add user → Create user; el propietario introduce la contraseña directamente allí, sin guardarla en el código.
+- El servidor verifica cada solicitud protegida con Supabase Auth, no con un JWT decodificado ni datos enviados por el navegador.
+- Sesiones con cookies HttpOnly, SameSite=Strict y Secure en HTTPS; renovación y cierre de sesión disponibles.
+- Pantallas privadas, API y documentos no se almacenan en la caché offline.
+- No se cambian las claves, la configuración global de Auth ni las políticas de otros proyectos. Conservar claves previamente expuestas sigue siendo un riesgo: añadir login no las vuelve seguras.
+
+La identidad del usuario **autoriza el espacio existente**; no reemplaza `PROJECT_OS_WORKSPACE_ID` por el UUID del nuevo usuario. Así se mantienen los proyectos y las rutas de documentos actuales. Las tablas siguen con RLS, sin permisos directos para anon/authenticated; el acceso a los datos se realiza únicamente desde el servidor.
 
 ## Vista local en Windows
 
-Requiere Node.js >=22.13.0 y las dependencias instaladas.
-
-Para iniciar el servidor en segundo plano y conservarlo abierto mientras revisas:
+Requiere Node >=22.13 y dependencias instaladas. Copia las variables de `.env.example` a un archivo ignorado `.env.local` y configura URL, clave **pública** de Supabase, correo autorizado y `PROJECT_OS_APP_URL=http://127.0.0.1:3001`.
 
 ```powershell
 .\scripts\start-local-preview.ps1
 ```
 
-Abre http://127.0.0.1:3001/. El servidor escucha únicamente en este equipo. El iniciador comprueba que el puerto esté disponible y espera a que la aplicación responda. Se inicia como un proceso oculto independiente para que no se cierre al terminar el trabajo de Codex. Si necesitas ver los registros, usa la ejecución en terminal que se muestra abajo.
+Abre http://127.0.0.1:3001/login. La vista local usa login real de Supabase, pero conserva los datos de desarrollo `local_seedy` en D1/R2 locales: no se sincronizan con producción. El iniciador comprueba la disponibilidad del puerto y no detiene otros procesos.
 
-También puedes ejecutarlo en una terminal que debes mantener abierta:
+## Datos existentes y configuración de producción
 
-```sh
-node scripts/run-framework.mjs preview --port 3001
-```
-
-La vista local no pide login y utiliza el espacio de desarrollo `local_seedy` en D1 y R2 locales. Sus cambios **no** se sincronizan con Supabase ni con el enlace público. El middleware de desarrollo rechaza conexiones no locales y solicitudes de origen cruzado.
-
-## Producción con Supabase
-
-La publicación actual conserva el espacio existente de Supabase. Variables de ejecución en Sites:
+Variables solo del servidor:
 
 - `PROJECT_OS_BACKEND=supabase`
-- `PROJECT_OS_WORKSPACE_ID`: identificador del espacio existente, no un identificador nuevo.
-- `SUPABASE_URL`: origen HTTPS del servidor.
-- `SUPABASE_SECRET_KEY`: secreto solo del servidor, nunca del navegador ni del repositorio.
+- `SUPABASE_URL`: el origen HTTPS de la instancia actual.
+- `SUPABASE_PUBLISHABLE_KEY` (o `SUPABASE_ANON_KEY`): clave pública para Auth.
+- `SUPABASE_SECRET_KEY`: clave de servicio existente, nunca en el navegador o el repositorio.
+- `PROJECT_OS_OWNER_EMAIL`: el único correo permitido.
+- `PROJECT_OS_OWNER_ID`: UUID opcional para reforzar la vinculación.
+- `PROJECT_OS_APP_URL`: origen exacto del alojamiento. En el futuro VPS: `https://projects-duarcas.brant--co.com`. Para Sites debe ser su URL actual; no la del VPS.
+- `PROJECT_OS_WORKSPACE_ID`: **el identificador existente**, no uno nuevo.
+- `PROJECT_OS_REQUIRE_EXISTING_WORKSPACE=true` para Docker: si falta el espacio ya migrado, se muestra un error en vez de importar datos de demostración.
 
-Las variables de producción son independientes del archivo local `.env`. No cambies el identificador del espacio para evitar abrir un conjunto de datos diferente.
+Las migraciones Supabase de `supabase/migrations/` ya forman parte de la aplicación actual. Este cambio de login no requiere repetirlas, borrar datos ni cambiar las políticas del servidor. Los originales permanecen en el bucket privado `project-documents`.
 
-La migración `supabase/migrations/20261005_0001_project_os.sql` crea las tablas, RLS, la función de creación atómica de tareas y el bucket privado `project-documents` con límite de 25 MB. Ya fue aplicada a la instancia actual; no debe repetirse para este cambio de acceso.
+## Docker / Dokploy (preparado, despliegue separado)
 
-Las migraciones `20261005_0002_core_commands.sql` y `20261005_0003_core_runtime_validation.sql` añaden y corrigen la operación transaccional del núcleo. Ya fueron aplicadas, en ese orden, a la instancia actual. No borran ni vuelven a importar los datos. La función solo puede ejecutarse con el rol de servicio del servidor; valida el espacio, dependencias, saldos y versiones de registros bajo un bloqueo por espacio.
+La imagen ejecuta **Next/Node en producción**, no Vite ni Wrangler. Escucha en el puerto interno **3000**, con usuario no root y comprobación de salud. No utiliza la cuenta de ChatGPT ni el alojamiento de Sites.
 
-D1/R2 conserva la fuente original de la migración. Al activar Supabase, el servidor copia el espacio una vez y escribe un marcador de finalización al terminar. Las importaciones interrumpidas pueden reanudarse. Después, los cambios se guardan en Supabase y no se replican a D1/R2; los errores se muestran en vez de escribir silenciosamente en otro backend.
+1. Crea un archivo privado `.env.production` (o variables runtime en Dokploy), con las variables anteriores y las credenciales existentes de OpenAI/GBrain si vas a usar esas funciones. No envíes secretos como argumentos de compilación.
+2. Usa el mismo Supabase y el mismo identificador del espacio. No inicialices otra base ni crees un espacio vacío.
+3. Conserva un volumen persistente en `/data` (`PROJECT_OS_DATA_DIR`). Guarda el historial auxiliar de IA, análisis, puente de GBrain e índice de búsqueda en SQLite. Las migraciones D1 existentes se aplican al arrancar, fuera de las solicitudes, y comprueban su integridad.
+4. **Antes del cambio definitivo desde Sites**, exporta y migra su D1 auxiliar: no se copia automáticamente a Docker. Aunque proyectos y documentos siguen en Supabase, perder ese historial auxiliar puede afectar los análisis previos y el seguimiento de la memoria. Respáldalo junto con Supabase y el volumen.
+5. En Dokploy usa este repositorio, rama `main`, Dockerfile en la raíz y puerto del contenedor 3000. Adjunta el volumen y las variables antes del primer arranque.
+6. Solo cuando se autorice el despliegue, configura DNS/HTTPS del dominio y comprueba ingreso, cierre de sesión, datos, descargas y bloqueo anónimo. No cambies servicios de otros proyectos.
+
+Para una prueba Docker local:
+
+```sh
+docker compose build
+docker compose up -d
+```
+
+El compose expone solo `127.0.0.1:3001`; Dokploy debe enrutar su dominio al puerto interno 3000. No combines este puerto con la vista de desarrollo si ya está ocupado. El contenedor reinicia sin perder el volumen. Si restauras archivos de otro despliegue, conserva las migraciones originales y realiza un respaldo antes.
+
+**Verificación:** la compilación standalone y las pruebas de Node se pueden ejecutar sin Docker. La construcción/ejecución real de la imagen requiere un Docker Engine disponible; una compilación Node exitosa no sustituye esa prueba.
 
 ## Desarrollo y publicación
 
-- `node node_modules/typescript/bin/tsc --noEmit`: comprobar TypeScript.
-- `node --experimental-vm-modules scripts/check-supabase.mjs`: pruebas del adaptador de Supabase.
-- `node --experimental-vm-modules scripts/check-workspace-context.mjs`: comprobar selección del espacio sin login.
-- `node --experimental-vm-modules scripts/check-core.mjs`: comprobar proyectos, hitos, tareas, ciclos, bloqueos, pagos y el historial.
-- `node scripts/run-framework.mjs build`: construir el Worker y los archivos estáticos.
-- `npm run db:generate`: generar migraciones D1 solo después de cambiar el esquema.
+- `node node_modules/typescript/bin/tsc --noEmit`: tipos.
+- `npm run test:auth`: autorización, propietario, cookies, renovación, cierre y rechazo de origen cruzado, con datos ficticios.
+- `npm run test:node`: persistencia, migraciones, transacciones y originales privados.
+- `node --experimental-vm-modules scripts/check-core.mjs` y `scripts/check-daily.mjs`: núcleo y planificación.
+- `node --experimental-vm-modules scripts/check-project-update.mjs`: estado posterior a reuniones y búsqueda en contenido.
+- `npm run build:docker`: compilación standalone en `.next-node`, independiente de los archivos del preview.
+- `npm run start:docker`: arranque Node con configuración de producción.
+- `node scripts/run-framework.mjs build`: compilación Workers para el alojamiento existente en Sites.
+- `npm run db:generate`: migraciones D1 nuevas, solo tras un cambio de esquema.
 
-El perfil de ejecución se encuentra en el archivo ignorado `.sites-runtime/execution-profile.json`. En este equipo se utiliza el perfil portable. No es necesario Bash ni reinstalar dependencias para este cambio.
-
-Para publicar, reutiliza el proyecto identificado en `.openai/hosting.json`, guarda y sube el código exacto, construye desde ese estado y despliega una versión guardada siguiendo el flujo de Sites. No incluyas `.env`, secretos, bases locales, registros, `node_modules` ni `.sites-runtime` en el artefacto.
+La publicación de Sites mantiene el mismo proyecto de `.openai/hosting.json`. Su audiencia de plataforma puede seguir pública, pero la aplicación exige la sesión de Supabase antes de devolver contenido privado. El repositorio público contiene código, no credenciales, bases, registros, archivos de reuniones ni originales. `.env*`, `.wrangler`, `.node-runtime`, `outputs` y archivos de ejecución están excluidos de Git/Docker.
 
 ## Núcleo de gestión
 

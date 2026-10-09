@@ -8,7 +8,7 @@ const localPreview = requestedCommand === "preview";
 const command = localPreview ? "dev" : requestedCommand;
 const managedLinux = readExecutionProfile() === "managed-linux";
 if (localPreview) {
-  if (managedLinux) throw new Error("Anonymous preview is only available on a local portable checkout.");
+  if (managedLinux) throw new Error("Local preview is only available on a local portable checkout.");
   process.env.PROJECT_OS_LOCAL_PREVIEW = "1";
   process.env.PROJECT_OS_BACKEND = "d1";
   process.env.PROJECT_OS_WORKSPACE_ID = "local_seedy";

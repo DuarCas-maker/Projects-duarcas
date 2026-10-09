@@ -22,7 +22,7 @@ function failure(error:unknown) {
   if (error instanceof AiError || error instanceof CoreValidationError || error instanceof BrainError) return json({error:error.message},error.status);
   if (error instanceof SupabaseConflictError) return json({error:error.message},409);
   if (error instanceof SyntaxError) return json({error:"Entrada JSON no válida."},400);
-  if (error instanceof WorkspaceConfigurationError) return json({error:error.message},503);
+  if (error instanceof WorkspaceConfigurationError) return json({error:error.message},error.status);
   console.error("project_update_failed",error instanceof Error ? error.name : "unknown");
   return json({error:"No se pudo cargar o guardar la actualización. El proyecto no se modificó."},503);
 }
@@ -51,7 +51,7 @@ export async function GET(request:Request) {
 export async function POST(request:Request) {
   let reserved:{userId:string;id:string}|undefined;
   try {
-    if ((request.headers.get("origin") && request.headers.get("origin")!==new URL(request.url).origin)||request.headers.get("sec-fetch-site")==="cross-site") throw new AiError("Origen no permitido.",403);
+    await currentWorkspaceId(request);
     const input=await request.text();if(input.length>8000) throw new AiError("Entrada demasiado grande.",413);
     const body=JSON.parse(input) as Record<string,unknown>;if(!body||typeof body!=="object"||Array.isArray(body)) throw new AiError("Entrada no válida.",400);
     const c=await current(body.projectId,body.meetingId??"");

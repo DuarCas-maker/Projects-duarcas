@@ -13,17 +13,17 @@ import { indexKnowledge } from "@/db/knowledge-search";
 export const dynamic = "force-dynamic";
 const json = (value: unknown, status = 200) => Response.json(value, {status, headers:{"Cache-Control":"no-store"}});
 function failure(error: unknown) {
-  if (error instanceof WorkspaceConfigurationError) return json({error:error.message},503);
+  if (error instanceof WorkspaceConfigurationError) return json({error:error.message},error.status);
   if (error instanceof BrainError) return json({error:error.message},error.status);
   console.error("meeting_request_failed",error instanceof Error ? error.name : "unknown");
   return json({error:"No se pudo guardar la reunión. Conserva los documentos y reintenta."},503);
 }
 export async function POST(request: Request) {
   try {
-    if ((request.headers.get("origin") && request.headers.get("origin") !== new URL(request.url).origin) || request.headers.get("sec-fetch-site") === "cross-site") throw new BrainError("Origen no permitido.",403);
+    const userId = await currentWorkspaceId(request);
     if (Number(request.headers.get("content-length")) > 21 * 1024 * 1024) throw new BrainError("La carga de documentos es demasiado grande.",413);
     const body = await boundedDocumentBytes(new Response(request.body),21 * 1024 * 1024);
-    const data = await new Response(body as unknown as BodyInit,{headers:{"Content-Type":request.headers.get("content-type") ?? ""}}).formData(), userId = await currentWorkspaceId(), state = await getWorkspaceState(userId);
+    const data = await new Response(body as unknown as BodyInit,{headers:{"Content-Type":request.headers.get("content-type") ?? ""}}).formData(), state = await getWorkspaceState(userId);
     const projectId = String(data.get("projectId") ?? ""), id = String(data.get("requestId") ?? ""), title = String(data.get("title") ?? "").trim(), date = String(data.get("date") ?? "");
     if (!state.projects.some(row => row.id === projectId)) throw new BrainError("Proyecto no encontrado.",404);
     if (!/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(id) || !title || title.length > 180 || !/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(Date.parse(date)) || new Date(`${date}T12:00:00Z`).toISOString().slice(0,10) !== date) throw new BrainError("Completa el título y una fecha válida.",400);

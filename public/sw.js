@@ -1,5 +1,6 @@
-const CACHE = "project-os-shell-v2";
-const SHELL = ["/", "/manifest.webmanifest", "/favicon.svg"];
+// Never cache private HTML, API responses or documents for anonymous offline use.
+const CACHE = "project-os-shell-v3";
+const SHELL = ["/manifest.webmanifest", "/favicon.svg"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(SHELL)));
@@ -16,7 +17,7 @@ self.addEventListener("activate", (event) => {
 self.addEventListener("fetch", (event) => {
   if (event.request.method !== "GET" || !event.request.url.startsWith(self.location.origin)) return;
   // Authoritative data must not silently fall back to a cached successful read.
-  if (new URL(event.request.url).pathname.startsWith("/api/")) return;
+  if (!SHELL.includes(new URL(event.request.url).pathname)) return;
   event.respondWith(
     fetch(event.request)
       .then((response) => {
@@ -26,6 +27,6 @@ self.addEventListener("fetch", (event) => {
         }
         return response;
       })
-      .catch(() => caches.match(event.request).then((cached) => cached || caches.match("/"))),
+      .catch(() => caches.match(event.request)),
   );
 });

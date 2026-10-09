@@ -15,6 +15,7 @@
 
 # next.js
 /.next/
+/.next-node/
 /.vinext/
 /out/
 
@@ -46,3 +47,5 @@ next-env.d.ts
 /.codex/
 /outputs/
 /work/
+/.node-runtime/
+/data/

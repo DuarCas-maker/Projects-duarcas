@@ -110,6 +110,7 @@ async function seeded(userId: string) {
 
 export async function ensureSupabaseWorkspace(userId: string, loadSnapshot: () => Promise<WorkspaceSnapshot>) {
   if (await seeded(userId)) return;
+  if (env.PROJECT_OS_REQUIRE_EXISTING_WORKSPACE === "true") throw new Error("The existing Supabase workspace is unavailable; automatic import is disabled.");
   const snapshot = await loadSnapshot();
   for (const row of snapshot.knowledge) {
     if (typeof row.storageKey !== "string" || !row.storageKey) continue;

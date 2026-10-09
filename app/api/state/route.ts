@@ -8,7 +8,7 @@ export async function GET() {
     const state = await getWorkspaceState(await currentWorkspaceId());
     return Response.json(state);
   } catch (error) {
-    if (error instanceof WorkspaceConfigurationError) return Response.json({ error: error.message }, { status: 503 });
+    if (error instanceof WorkspaceConfigurationError) return Response.json({ error: error.message }, { status: error.status });
     console.error("workspace_state_failed", error);
     return Response.json({ error: "No fue posible cargar el espacio de trabajo." }, { status: 500 });
   }

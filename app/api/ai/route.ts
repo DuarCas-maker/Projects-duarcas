@@ -15,7 +15,7 @@ import type { BrainMemory } from "@/lib/brain-types";
 export const dynamic = "force-dynamic";
 const json = (value: unknown, status = 200) => Response.json(value, { status, headers: { "Cache-Control": "no-store" } });
 const idPattern = /^[a-zA-Z0-9_-]{1,100}$/;
-function fail(error: unknown) { if (error instanceof AiError || error instanceof CoreValidationError) return json({ error: error.message }, error.status); if (error instanceof SupabaseConflictError) return json({ error: error.message }, 409); if (error instanceof SyntaxError) return json({ error: "Entrada JSON no válida." }, 400); if (error instanceof WorkspaceConfigurationError) return json({ error: error.message }, 503); console.error("ai_request_failed", error instanceof Error ? error.name : "unknown"); return json({ error: "La IA o su almacenamiento no están disponibles. No se aplicó ningún cambio." }, 503); }
+function fail(error: unknown) { if (error instanceof AiError || error instanceof CoreValidationError) return json({ error: error.message }, error.status); if (error instanceof SupabaseConflictError) return json({ error: error.message }, 409); if (error instanceof SyntaxError) return json({ error: "Entrada JSON no válida." }, 400); if (error instanceof WorkspaceConfigurationError) return json({ error: error.message }, error.status); console.error("ai_request_failed", error instanceof Error ? error.name : "unknown"); return json({ error: "La IA o su almacenamiento no están disponibles. No se aplicó ningún cambio." }, 503); }
 export async function GET(request: Request) {
   try {
     const userId = await currentWorkspaceId(), projectId = new URL(request.url).searchParams.get("projectId") || undefined;
@@ -26,11 +26,12 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   let reserved: { userId: string; id: string } | undefined;
   try {
+    const userId = await currentWorkspaceId(request);
     if (Number(request.headers.get("content-length")) > 10000) throw new AiError("Consulta demasiado larga.", 413);
     const input = await request.text(); if (input.length > 10000) throw new AiError("Consulta demasiado larga.", 413);
     const body = JSON.parse(input) as Record<string, unknown>;
     if (!body || Array.isArray(body) || typeof body !== "object") throw new AiError("Entrada no válida.", 400);
-    const userId = await currentWorkspaceId(), state = await getWorkspaceState(userId);
+    const state = await getWorkspaceState(userId);
     if (body.kind === "save_suggestions") {
       if (typeof body.runId !== "string" || !idPattern.test(body.runId)) throw new AiError("Consulta no válida.", 400);
       const run = await findAiRun(userId, body.runId);

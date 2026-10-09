@@ -11,7 +11,7 @@ import { indexKnowledge } from "@/db/knowledge-search";
 export const dynamic = "force-dynamic";
 const json = (value: unknown, status = 200) => Response.json(value,{status,headers:{"Cache-Control":"no-store"}});
 const fail = (error: unknown, state?: Workspace) => {
-  if (error instanceof BrainError || error instanceof WorkspaceConfigurationError) return json({error:error.message,state},error instanceof BrainError ? error.status : 503);
+  if (error instanceof BrainError || error instanceof WorkspaceConfigurationError) return json({error:error.message,state},error.status);
   if (error instanceof SyntaxError) return json({error:"Entrada JSON no válida."},400);
   console.error("brain_request_failed",error instanceof Error ? error.name : "unknown");
   return json({error:"La memoria no está disponible. Los originales se conservan.",state},503);
@@ -27,10 +27,10 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   let reserved: {userId:string;id:string} | undefined, savedState: Workspace | undefined;
   try {
-    if ((request.headers.get("origin") && request.headers.get("origin") !== new URL(request.url).origin) || request.headers.get("sec-fetch-site") === "cross-site") throw new BrainError("Origen no permitido.",403);
+    const userId = await currentWorkspaceId(request);
     const body = JSON.parse(await boundedText(new Response(request.body),80000)) as Record<string,unknown>;
     if (!body || Array.isArray(body) || typeof body !== "object") throw new BrainError("Entrada no válida.",400);
-    const userId = await currentWorkspaceId(), state = await getWorkspaceState(userId), row = project(state,body.projectId);
+    const state = await getWorkspaceState(userId), row = project(state,body.projectId);
     if (!brainConfigured() || env.PROJECT_OS_BRAIN_ENABLED !== "true") throw new BrainError("GBrain no está activado en este servidor.");
     if (typeof body.requestId !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(body.requestId)) throw new BrainError("Identificador de operación no válido.",400);
     if (body.action === "search") {

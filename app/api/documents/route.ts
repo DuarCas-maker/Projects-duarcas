@@ -18,7 +18,7 @@ export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
   try {
-    const userId = await currentWorkspaceId();
+    const userId = await currentWorkspaceId(request);
     const data = await request.formData();
     const file = data.get("file");
     const projectId = String(data.get("projectId") ?? "").replace(/[^a-zA-Z0-9_-]/g, "");
@@ -53,7 +53,7 @@ export async function POST(request: Request) {
     await indexKnowledge(userId,item).catch(()=>console.error("document_search_index_pending"));
     return Response.json({ item }, { status: 201 });
   } catch (error) {
-    if (error instanceof WorkspaceConfigurationError) return Response.json({ error: error.message }, { status: 503 });
+    if (error instanceof WorkspaceConfigurationError) return Response.json({ error: error.message }, { status: error.status });
     console.error("document_upload_failed", error);
     return Response.json({ error: "No fue posible almacenar el archivo." }, { status: 500 });
   }

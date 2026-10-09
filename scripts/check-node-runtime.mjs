@@ -1,0 +1,32 @@
+import assert from "node:assert/strict";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { d1Adapter, migrate, openSqlite } from "../runtime/sqlite.mjs";
+import { fileBucket } from "../runtime/bucket.mjs";
+const directory = await mkdtemp(join(tmpdir(), "project-os-runtime-"));
+let sql;
+try {
+  const file = join(directory, "fixture.sqlite");
+  sql = openSqlite(file); migrate(sql); migrate(sql);
+  assert.equal(sql.prepare("SELECT count(*) n FROM _node_migrations").get().n, 4);
+  const db = d1Adapter(sql);
+  await db.exec("CREATE TABLE fixture (id TEXT PRIMARY KEY, value INTEGER NOT NULL)");
+  assert.equal((await db.prepare("INSERT INTO fixture VALUES (?,?)").bind("one", 1).run()).meta.changes, 1);
+  await assert.rejects(db.batch([db.prepare("UPDATE fixture SET value=2 WHERE id=?").bind("one"), db.prepare("SELECT json('conflict')")]));
+  assert.equal(await db.prepare("SELECT value FROM fixture WHERE id=?").bind("one").first("value"), 1);
+  await db.batch([db.prepare("UPDATE fixture SET value=? WHERE id=?").bind(3, "one"), db.prepare("SELECT json('true')")]);
+  assert.deepEqual(await db.prepare("SELECT value, value+1 AS next FROM fixture").raw(), [[3, 4]]);
+  assert.deepEqual(await db.prepare("SELECT 1 AS repeated, 2 AS repeated").raw(), [[1, 2]]);
+  assert.equal((await db.prepare("SELECT * FROM fixture").all()).results.length, 1);
+  sql.close(); sql = openSqlite(file); migrate(sql);
+  assert.equal(sql.prepare("SELECT value FROM fixture").get().value, 3);
+  const bucket = fileBucket(join(directory, "objects"));
+  await bucket.put("../../unsafe-name", "synthetic original", { httpMetadata: { contentType: "text/plain" } });
+  const original = await bucket.get("../../unsafe-name");
+  assert.equal(await new Response(original.body).text(), "synthetic original");
+  assert.equal(original.httpMetadata.contentType, "text/plain");
+  assert.equal(new TextDecoder().decode(await original.arrayBuffer()), "synthetic original");
+  await bucket.delete("../../unsafe-name"); assert.equal(await bucket.get("../../unsafe-name"), null);
+  console.log("Node passed: startup migrations, persistence, ordered D1 rows, atomic batches and private originals.");
+} finally { sql?.close(); await rm(directory, { recursive: true, force: true }); }

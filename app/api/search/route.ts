@@ -9,7 +9,7 @@ const json=(value:unknown,status=200)=>Response.json(value,{status,headers:{"Cac
 function failure(error:unknown){
   if(error instanceof BrainError)return json({error:error.message},error.status);
   if(error instanceof SyntaxError)return json({error:"Entrada JSON no válida."},400);
-  if(error instanceof WorkspaceConfigurationError)return json({error:error.message},503);
+  if(error instanceof WorkspaceConfigurationError)return json({error:error.message},error.status);
   console.error("global_search_failed",error instanceof Error ? error.name : "unknown");return json({error:"No se pudo consultar el índice de contenido. Tus originales se conservan."},503);
 }
 export async function GET(request:Request){
@@ -28,10 +28,10 @@ export async function GET(request:Request){
 }
 export async function POST(request:Request){
   try {
-    if((request.headers.get("origin") && request.headers.get("origin")!==new URL(request.url).origin)||request.headers.get("sec-fetch-site")==="cross-site")throw new BrainError("Origen no permitido.",403);
+    const userId=await currentWorkspaceId(request);
     const input=await request.text();if(input.length>1000)throw new BrainError("Entrada demasiado grande.",413);
     const body=JSON.parse(input) as {knowledgeId?:unknown;retry?:boolean};if(!body||typeof body!=="object"||typeof body.knowledgeId!=="string")throw new BrainError("Selecciona una fuente.",400);
-    const userId=await currentWorkspaceId(),state=await getWorkspaceState(userId),item=state.knowledge.find(k=>k.id===body.knowledgeId && k.userId===userId && state.projects.some(p=>p.id===k.projectId && p.userId===userId));
+    const state=await getWorkspaceState(userId),item=state.knowledge.find(k=>k.id===body.knowledgeId && k.userId===userId && state.projects.some(p=>p.id===k.projectId && p.userId===userId));
     if(!item)throw new BrainError("Fuente no encontrada.",404);
     return json(await indexKnowledge(userId,item,body.retry===true));
   }catch(error){return failure(error);}

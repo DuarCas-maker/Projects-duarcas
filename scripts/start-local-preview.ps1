@@ -26,9 +26,9 @@ for ($previewAttempt = 0; $previewAttempt -lt 60; $previewAttempt++) {
     $previewProcess.Refresh()
     if ($previewProcess.HasExited) { throw 'El servidor no pudo iniciar. Ejecuta la vista en una terminal para consultar el error.' }
     try {
-        $previewResponse = Invoke-WebRequest -Uri ($previewUrl + 'api/state') -TimeoutSec 2
+        $previewResponse = Invoke-WebRequest -Uri ($previewUrl + 'login') -TimeoutSec 2
         if ($previewResponse.StatusCode -eq 200) {
-            Write-Output "Project OS sin login: $previewUrl (PID $($previewProcess.Id))"
+            Write-Output "Project OS con login: $previewUrl (PID $($previewProcess.Id))"
             return
         }
     } catch { }
