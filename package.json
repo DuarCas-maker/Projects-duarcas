@@ -10,7 +10,7 @@
     "dev": "node scripts/run-framework.mjs dev",
     "preview": "node scripts/run-framework.mjs preview",
     "build": "node scripts/run-framework.mjs build",
-    "build:docker": "next build --webpack",
+    "build:docker": "node scripts/build-node.mjs",
     "start:docker": "node scripts/start-node.mjs",
     "test:auth": "node --experimental-vm-modules scripts/check-auth.mjs",
     "test:auth:http": "node scripts/check-auth-http.mjs",

@@ -3,8 +3,8 @@ import path from "node:path";
 
 const nextConfig: NextConfig = {
   // Keep Node production artifacts separate from the existing Vinext preview.
-  distDir: ".next-node",
-  output: "standalone",
+  distDir: process.env.PROJECT_OS_BUILD_TARGET === "node" ? ".next-node" : undefined,
+  output: process.env.PROJECT_OS_BUILD_TARGET === "node" ? "standalone" : undefined,
   poweredByHeader: false,
   webpack(config, { webpack }) {
     config.plugins.push(new webpack.NormalModuleReplacementPlugin(/^cloudflare:workers$/, (resource: { request: string }) => {
