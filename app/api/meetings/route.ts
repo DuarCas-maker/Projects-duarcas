@@ -8,6 +8,7 @@ import { MEETING_PREFIX, MAX_MEETING_TEXT_BYTES, MAX_MEETING_FILE_BYTES, driveVi
 import { contentHash } from "@/lib/brain-content";
 import { BrainError } from "@/lib/gbrain-client";
 import { boundedDocumentBytes } from "@/lib/brain-documents";
+import { indexKnowledge } from "@/db/knowledge-search";
 
 export const dynamic = "force-dynamic";
 const json = (value: unknown, status = 200) => Response.json(value, {status, headers:{"Cache-Control":"no-store"}});
@@ -59,6 +60,7 @@ export async function POST(request: Request) {
     }
     const savedState = await getWorkspaceState(userId), saved = savedState.knowledge.find(row => row.id === id);
     if (!saved || readMeeting(saved)?.fingerprint !== fingerprint) throw new BrainError("Esta operación pertenece a otra reunión.",409);
+    await indexKnowledge(userId,saved).catch(()=>console.error("meeting_search_index_pending"));
     return json({item:saved,state:savedState},201);
   } catch (error) { return failure(error); }
 }

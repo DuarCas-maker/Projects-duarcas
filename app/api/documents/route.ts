@@ -4,6 +4,7 @@ import { ensureWorkspace, ensureWorkspaceBackend } from "@/db/workspace";
 import { knowledgeItems, projects } from "@/db/schema";
 import { WorkspaceConfigurationError, currentWorkspaceId } from "@/lib/workspace-context";
 import { and, eq } from "drizzle-orm";
+import { indexKnowledge } from "@/db/knowledge-search";
 import {
   deleteSupabaseDocument,
   insertSupabaseRow,
@@ -38,6 +39,7 @@ export async function POST(request: Request) {
         await deleteSupabaseDocument(key).catch(() => console.error("supabase_document_cleanup_failed"));
         throw error;
       }
+      await indexKnowledge(userId,savedItem).catch(()=>console.error("document_search_index_pending"));
       return Response.json({ item: savedItem }, { status: 201 });
     }
 
@@ -48,6 +50,7 @@ export async function POST(request: Request) {
     if (!project.length) return Response.json({ error: "Proyecto no encontrado." }, { status: 404 });
     await env.BUCKET.put(key, file.stream(), { httpMetadata: { contentType: file.type || "application/octet-stream" }, customMetadata: { originalName: file.name, projectId } });
     await db.insert(knowledgeItems).values(item);
+    await indexKnowledge(userId,item).catch(()=>console.error("document_search_index_pending"));
     return Response.json({ item }, { status: 201 });
   } catch (error) {
     if (error instanceof WorkspaceConfigurationError) return Response.json({ error: error.message }, { status: 503 });

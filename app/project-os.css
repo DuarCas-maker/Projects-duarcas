@@ -548,3 +548,41 @@ button { cursor: pointer; }
 @media (max-width: 760px) { .brain-source-list article { flex-wrap:wrap; } .brain-source-list article button { margin-left:2rem; } }
 @media (max-width: 700px) { .planning-controls .core-form-row { grid-template-columns: repeat(2, minmax(0,1fr)); } .daily-approvals { padding: .8rem; } }
 @media (max-width: 640px) { .core-form-row, .core-financial-grid { grid-template-columns: 1fr; } .core-milestone { flex-wrap: wrap; } .core-milestone > button { margin-left: 3rem; } .core-panel .section-heading { flex-wrap: wrap; gap: 1rem; } }
+.project-update-panel { margin-top:1.5rem; }
+.project-update-panel h3 { font-size:1rem; font-weight:650; line-height:1.5; }
+.update-controls { display:flex; align-items:flex-end; flex-wrap:wrap; gap:1rem; margin-top:1rem; }
+.update-controls label { display:grid; gap:.4rem; flex:1; min-width:12rem; font-size:.875rem; }
+.update-controls select { border:1px solid var(--line); border-radius:.6rem; padding:.65rem; background:white; color:var(--ink); width:100%; }
+.update-counts { display:flex; flex-wrap:wrap; gap:.5rem; margin:1.2rem 0; }
+.update-counts span { background:var(--soft); border-radius:2rem; padding:.4rem .7rem; font-size:.875rem; }
+.update-changes-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:1.4rem; margin:1rem 0; }
+.update-changes-grid > section { background:#f5f7f3; padding:1rem; border-radius:.8rem; min-width:0; }
+.update-claim { margin-top:.8rem; padding-top:.8rem; border-top:1px solid var(--line); overflow-wrap:anywhere; }
+.update-claim p, .update-next p { font-size:.95rem; line-height:1.7; white-space:pre-wrap; }
+.update-claim small, .update-next small, .update-priorities small { display:block; color:var(--muted-copy); font-size:.875rem; line-height:1.6; }
+.update-priorities { padding:1rem; border:1px solid var(--line); border-radius:.8rem; }
+.update-priorities summary { cursor:pointer; font-size:.95rem; font-weight:600; }
+.update-priorities p { margin-top:1rem; }
+.update-ai-reading { margin-top:1.4rem; padding-top:1.4rem; border-top:1px solid var(--line); }
+.update-summary { font-size:1rem; line-height:1.8; white-space:pre-wrap; margin:1rem 0; }
+.update-ai-reading > section { margin:1rem 0; }
+.update-warning { padding:.8rem; border-radius:.6rem; background:#fff5da; font-size:.9rem; margin-top:.8rem; color:#70551c; }
+.update-next { background:#eaf5d6; border-radius:.8rem; padding:1rem; }
+.update-next button { margin-top:.8rem; }
+.content-search-results { width:min(36rem,calc(100vw - 2rem)); right:auto; max-height:78dvh; overflow-y:auto; color:var(--ink); }
+.content-search .search-dismiss { position:fixed; inset:0; z-index:35; width:100vw; height:100vh; cursor:default; }
+.content-search input, .content-search > button:not(.search-dismiss) { position:relative; z-index:41; }
+.content-search-results .search-result { display:flex; flex-direction:column; gap:.35rem; text-align:left; padding:.85rem; }
+.content-search-results .search-result span { font-size:.7rem; letter-spacing:.035em; }
+.content-search-results .search-result strong { font-size:.95rem; }
+.content-search-results .search-result small { white-space:normal; line-height:1.5; overflow-wrap:anywhere; font-size:.875rem; }
+.search-status { padding:.7rem; font-size:.875rem; color:var(--muted-copy); }
+.search-index-status { border-top:1px solid var(--line); margin-top:.5rem; padding:.8rem; display:grid; gap:.6rem; font-size:.875rem; }
+.search-index-status small { white-space:normal; line-height:1.5; }
+.search-index-status details p { margin:.5rem 0; overflow-wrap:anywhere; }
+.search-index-status button, .search-pagination button { display:flex; align-items:center; justify-content:center; width:auto; border:1px solid var(--line); font-size:.875rem; }
+.search-pagination { display:flex; justify-content:space-between; padding:.6rem; gap:.7rem; }
+.search-source-preview { margin-bottom:1.3rem; }
+.search-source-preview h2 { font-size:1.2rem; overflow-wrap:anywhere; }
+.search-source-preview pre { white-space:pre-wrap; overflow-wrap:anywhere; font-size:.875rem; line-height:1.7; max-height:24rem; overflow:auto; margin-top:1rem; padding:1rem; background:var(--soft); border-radius:.7rem; }
+@media(max-width:760px){.update-changes-grid{grid-template-columns:1fr}.update-controls > button{width:100%}.project-update-panel .section-heading{flex-wrap:wrap;gap:.8rem}.content-search-results{left:0;width:min(36rem,calc(100vw - 1rem))}.compiled-head{flex-wrap:wrap}}

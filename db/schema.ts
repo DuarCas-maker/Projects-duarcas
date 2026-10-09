@@ -127,3 +127,12 @@ export const brainRequests = sqliteTable("brain_requests", {
   dayKey: text("day_key").notNull(), createdAt: text("created_at").notNull(),
   leaseUntil: text("lease_until").notNull(), attempts: integer("attempts").notNull().default(1), result: text("result").notNull().default(""),
 }, (table) => [index("idx_brain_requests_user_day").on(table.userId, table.dayKey)]);
+
+// Local textual index of original documents. It never stores video, credentials
+// or embeddings and works regardless of the operational backend (Supabase/D1).
+export const knowledgeSearch = sqliteTable("knowledge_search", {
+  id: text("id").primaryKey(), userId: text("user_id").notNull(), projectId: text("project_id").notNull(),
+  knowledgeId: text("knowledge_id").notNull(), fingerprint: text("fingerprint").notNull(),
+  content: text("content").notNull().default(""), normalizedContent: text("normalized_content").notNull().default(""),
+  status: text("status").notNull(), error: text("error").notNull().default(""), indexedAt: text("indexed_at").notNull(),
+}, (table) => [index("idx_knowledge_search_user").on(table.userId,table.knowledgeId)]);

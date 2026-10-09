@@ -7,6 +7,7 @@ import { BrainError, boundedText } from "@/lib/gbrain-client";
 import { contentHash, safeMemoryText } from "@/lib/brain-content";
 import { documentFormat } from "@/lib/brain-documents";
 import type { Workspace } from "@/lib/workspace-types";
+import { indexKnowledge } from "@/db/knowledge-search";
 export const dynamic = "force-dynamic";
 const json = (value: unknown, status = 200) => Response.json(value,{status,headers:{"Cache-Control":"no-store"}});
 const fail = (error: unknown, state?: Workspace) => {
@@ -58,6 +59,7 @@ export async function POST(request: Request) {
     if (item) text = await knowledgeText(userId,item);
     if (!item) { item = await saveOriginalNote(userId,row.id,body.requestId,title,text,state); savedState = await getWorkspaceState(userId); }
     const result = await processMemory(userId,row.name,item,text);
+    await indexKnowledge(userId,item).catch(()=>console.error("note_search_index_pending"));
     await completeBrainRequest(userId,body.requestId,result);
     return json({...result,state:await getWorkspaceState(userId)});
   } catch (error) { if (reserved) await retryBrainRequest(reserved.userId,reserved.id).catch(() => undefined); return fail(error,savedState); }
