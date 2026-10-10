@@ -14,7 +14,7 @@ export function LoginForm() {
       .then(response => { if (response.ok && active) window.location.replace("/"); }).catch(() => {});
     return () => { active = false; };
   }, []);
-  return <main className="login-screen"><section className="login-card"><div className="login-brand"><span>OS</span><LockKeyhole size={24} /></div><p className="eyebrow">PROJECT OS · ESPACIO PRIVADO</p><h1>Bienvenido de nuevo.</h1><p>Accede con tu correo y contraseña de Supabase. No necesitas iniciar sesión con ChatGPT.</p><form onSubmit={async event => {
+  return <main className="login-screen"><section className="login-card"><div className="login-brand"><span className="login-wordmark">duarcas</span><LockKeyhole size={24} aria-hidden="true" /></div><p className="eyebrow">PROJECT OS · ESPACIO PRIVADO</p><h1>Bienvenido de nuevo.</h1><form onSubmit={async event => {
     event.preventDefault(); setBusy(true); setError("");
     try {
       const response = await fetch("/api/auth", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "login", email, password }) });

@@ -51,6 +51,18 @@ ast.walkDecls(declaration => {
 for (const accent of ["lime", "blue", "violet", "orange", "cyan", "pink", "yellow", "red", "gray", "green"])
   assert.ok(css.includes(`.accent-${accent}`), `Existing project accent ${accent} must remain supported`);
 assert.ok(!css.includes(".project-monogram::first-line"), "Project initials must not override the accessible white foreground");
+const declarations = selector => {
+  const values = new Map();
+  ast.walkRules(selector, rule => rule.walkDecls(declaration => values.set(declaration.prop, declaration.value)));
+  return values;
+};
+assert.equal(declarations(".login-screen").get("background"), "var(--brand-black)", "Only the login backdrop uses solid black");
+assert.equal(declarations(".login-card").get("background"), "var(--brand-white)", "The login card stays white");
+assert.equal(tokens.get("--paper"), "#FAFAFA", "The rest of the application keeps its light surfaces");
+const login = await readFile(new URL("app/login/login-form.tsx", root), "utf8");
+assert.ok(login.includes('className="login-wordmark">duarcas</span>'), "The login wordmark must display duarcas");
+assert.ok(!login.includes("<span>OS</span>") && !login.includes("Accede con tu correo y contraseña de Supabase"), "Old login badge and helper copy must be removed");
+assert.ok(login.includes('type="email"') && login.includes('type="password"') && login.includes('action: "login"'), "Owner authentication form must remain intact");
 const manifest = JSON.parse(await readFile(new URL("public/manifest.webmanifest", root), "utf8"));
 assert.equal(manifest.background_color, palette["--brand-white"]);
 assert.equal(manifest.theme_color, palette["--brand-black"]);

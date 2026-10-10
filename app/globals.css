@@ -106,10 +106,10 @@ body {
   font-family: Arial, Helvetica, sans-serif;
 }
 /* Private Supabase access, independent of the hosting account. */
-.login-screen { min-height: 100dvh; display: grid; place-items: center; padding: 24px; background: var(--paper); }
+.login-screen { min-height: 100dvh; display: grid; place-items: center; padding: 24px; background: var(--brand-black); }
 .login-card { width: min(100%, 440px); background: var(--brand-white); border: 1px solid var(--line); border-top: 4px solid var(--brand-wine); border-radius: 22px; padding: 36px; box-shadow: 0 24px 70px rgba(0,0,0,.07); color: var(--brand-black); }
 .login-brand { display: flex; justify-content: space-between; align-items: center; margin-bottom: 32px; }
-.login-brand span { background: var(--brand-wine); color: var(--brand-white); padding: 12px; border-radius: 12px; font-weight: 800; }
+.login-brand .login-wordmark { color: var(--brand-wine); font-size: 28px; font-weight: 800; letter-spacing: -.045em; line-height: 1; }
 .login-brand svg, .login-card .eyebrow { color: var(--brand-purple); }
 .login-card h1 { font-size: 28px; font-weight: 700; margin: 10px 0; }
 .login-card > p:not(.eyebrow), .login-card > small { color: var(--muted-copy); font-size: 14px; line-height: 1.6; }
