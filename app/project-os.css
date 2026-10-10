@@ -612,3 +612,23 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--brand-wine); }
 /* Browser autofill must not introduce a blue surface into the brand palette. */
 input:is(:autofill, :-webkit-autofill) { -webkit-text-fill-color: var(--ink); box-shadow: 0 0 0 1000px var(--surface) inset; caret-color: var(--ink); }
 ::selection { background: var(--purple-soft); color: var(--brand-purple); }
+.repository-panel { margin-bottom: 24px; }
+.repository-note { display: block; color: var(--muted-copy); line-height: 1.6; margin: 12px 0; }
+.repository-panel .section-title { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
+.repository-link-form { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; margin: 20px 0; }
+.repository-link-form label { display: grid; gap: 6px; font-size: 13px; min-width: 180px; flex: 1; }
+.repository-link-form label:first-child { flex: 2; min-width: 240px; }
+.repository-list { display: grid; gap: 14px; }
+.repository-card { border: 1px solid var(--line); border-radius: 14px; padding: 18px; overflow-wrap: anywhere; }
+.repository-card-heading { display: flex; gap: 12px; align-items: center; }
+.repository-card-heading > div { display: grid; gap: 4px; flex: 1; }
+.repository-card-heading > svg, .repository-card a { color: var(--brand-purple); }
+.repository-card small { color: var(--muted-copy); }
+.repository-card p { font-size: 14px; margin: 14px 0 8px; }
+.repository-card details { margin-top: 12px; font-size: 13px; }
+.repository-card summary { cursor: pointer; }
+.repository-card ul { padding-left: 20px; margin-top: 8px; }
+.repository-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+.repository-error { padding: 12px; border-radius: 10px; background: var(--wine-soft); color: var(--brand-wine); }
+.repository-preview { width: min(900px, calc(100vw - 32px)); max-width: 900px; }
+.repository-preview pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 65vh; overflow: auto; font-size: 12px; }
