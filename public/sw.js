@@ -1,5 +1,5 @@
 // Never cache private HTML, API responses or documents for anonymous offline use.
-const CACHE = "project-os-shell-v3";
+const CACHE = "project-os-shell-v4";
 const SHELL = ["/manifest.webmanifest", "/favicon.svg"];
 
 self.addEventListener("install", (event) => {

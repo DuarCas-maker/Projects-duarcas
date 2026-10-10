@@ -2,6 +2,14 @@
 
 Gestor personal de proyectos, tareas, reuniones, contexto y memoria. Mantiene el alojamiento actual en Sites y añade una versión Node/Next standalone para Docker.
 
+## Paleta institucional
+
+Los colores base están centralizados en `app/globals.css`: negro `#000000`, blanco `#FFFFFF`, vino tinto `#722F37` y morado `#2A0D3A`. Negro/blanco organizan navegación y lectura; vino tinto identifica acciones principales y alertas, y morado resalta navegación activa, foco y contexto. Grises y tintes suaves derivados completan bordes y fondos sin añadir otra identidad visual.
+
+`app/project-os.css` aplica estos tokens al login, proyectos, reuniones, memoria, búsqueda, calendario y formularios. Los identificadores históricos de los acentos de proyectos se conservan: cambia su apariencia, no los registros. La paleta no depende del modo claro/oscuro del sistema. El icono y el manifiesto PWA siguen los mismos colores.
+
+`npm run test:palette` comprueba valores exactos, CSS y tokens válidos, compatibilidad de acentos y contraste mínimo 4.5:1 en las combinaciones de texto principales.
+
 ## Acceso privado con Supabase
 
 Correo y contraseña se validan contra **el Supabase ya conectado a Project OS**. No se requiere una cuenta de ChatGPT. Solo el correo configurado en `PROJECT_OS_OWNER_EMAIL` puede acceder; opcionalmente `PROJECT_OS_OWNER_ID` fija su UUID de Supabase.

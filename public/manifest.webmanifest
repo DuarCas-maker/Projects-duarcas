@@ -4,8 +4,8 @@
   "description": "Estado, contexto, tiempo y siguiente acción para todos tus proyectos.",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#f4f7f2",
-  "theme_color": "#0b1613",
+  "background_color": "#FFFFFF",
+  "theme_color": "#000000",
   "lang": "es-CO",
   "icons": [
     {
