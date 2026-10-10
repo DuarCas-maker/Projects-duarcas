@@ -13,7 +13,7 @@ Correo y contraseña se validan contra **el Supabase ya conectado a Project OS**
 - Pantallas privadas, API y documentos no se almacenan en la caché offline.
 - No se cambian las claves, la configuración global de Auth ni las políticas de otros proyectos. Conservar claves previamente expuestas sigue siendo un riesgo: añadir login no las vuelve seguras.
 
-La identidad del usuario **autoriza el espacio existente**; no reemplaza `PROJECT_OS_WORKSPACE_ID` por el UUID del nuevo usuario. Así se mantienen los proyectos y las rutas de documentos actuales. Las tablas siguen con RLS, sin permisos directos para anon/authenticated; el acceso a los datos se realiza únicamente desde el servidor.
+La identidad del usuario **autoriza el espacio configurado**; no reemplaza `PROJECT_OS_WORKSPACE_ID` por el UUID del usuario. Sites conserva su espacio existente. Para el VPS se ha elegido expresamente un espacio nuevo con solo los nombres de proyectos. Las tablas siguen con RLS, sin permisos directos para anon/authenticated; el acceso a los datos se realiza únicamente desde el servidor.
 
 ## Vista local en Windows
 
@@ -36,8 +36,8 @@ Variables solo del servidor:
 - `PROJECT_OS_OWNER_EMAIL`: el único correo permitido.
 - `PROJECT_OS_OWNER_ID`: UUID opcional para reforzar la vinculación.
 - `PROJECT_OS_APP_URL`: origen exacto del alojamiento. En el futuro VPS: `https://projects-duarcas.brant--co.com`. Para Sites debe ser su URL actual; no la del VPS.
-- `PROJECT_OS_WORKSPACE_ID`: **el identificador existente**, no uno nuevo.
-- `PROJECT_OS_REQUIRE_EXISTING_WORKSPACE=true` para Docker: si falta el espacio ya migrado, se muestra un error en vez de importar datos de demostración.
+- `PROJECT_OS_WORKSPACE_ID`: el espacio elegido para **ese alojamiento**. No cambiar el de Sites. En el VPS de inicio limpio, usar un identificador nuevo `clean_` seguido de 32 caracteres hexadecimales en minúscula.
+- `PROJECT_OS_REQUIRE_EXISTING_WORKSPACE=true` para Docker: las solicitudes nunca importan datos de demostración. El inicio limpio se realiza una única vez antes de escuchar conexiones.
 
 Las migraciones Supabase de `supabase/migrations/` ya forman parte de la aplicación actual. Este cambio de login no requiere repetirlas, borrar datos ni cambiar las políticas del servidor. Los originales permanecen en el bucket privado `project-documents`.
 
@@ -46,9 +46,9 @@ Las migraciones Supabase de `supabase/migrations/` ya forman parte de la aplicac
 La imagen ejecuta **Next/Node en producción**, no Vite ni Wrangler. Escucha en el puerto interno **3000**, con usuario no root y comprobación de salud. No utiliza la cuenta de ChatGPT ni el alojamiento de Sites.
 
 1. Crea un archivo privado `.env.production` (o variables runtime en Dokploy), con las variables anteriores y las credenciales existentes de OpenAI/GBrain si vas a usar esas funciones. No envíes secretos como argumentos de compilación.
-2. Usa el mismo Supabase y el mismo identificador del espacio. No inicialices otra base ni crees un espacio vacío.
+2. Usa el mismo Supabase. Para el inicio limpio elegido por el propietario, configura **un espacio nuevo**; no cambies el espacio de Sites ni de localhost. No crees otra instancia de Supabase.
 3. Conserva un volumen persistente en `/data` (`PROJECT_OS_DATA_DIR`). Guarda el historial auxiliar de IA, análisis, puente de GBrain e índice de búsqueda en SQLite. Las migraciones D1 existentes se aplican al arrancar, fuera de las solicitudes, y comprueban su integridad.
-4. **Antes del cambio definitivo desde Sites**, exporta y migra su D1 auxiliar: no se copia automáticamente a Docker. Aunque proyectos y documentos siguen en Supabase, perder ese historial auxiliar puede afectar los análisis previos y el seguimiento de la memoria. Respáldalo junto con Supabase y el volumen.
+4. El modo elegido para este despliegue es **solo nombres**, sin trasladar el historial de pruebas ni el del Site. Sigue la sección de inicio limpio. La transferencia de D1 descrita más abajo es únicamente la alternativa para quien elija conservar el historial; no se necesita para este inicio limpio.
 5. En Dokploy usa este repositorio, rama `main`, Dockerfile en la raíz y puerto del contenedor 3000. Adjunta el volumen y las variables antes del primer arranque.
 6. Solo cuando se autorice el despliegue, configura DNS/HTTPS del dominio y comprueba ingreso, cierre de sesión, datos, descargas y bloqueo anónimo. No cambies servicios de otros proyectos.
 
@@ -77,6 +77,8 @@ Referencias oficiales: [Dockerfile](https://docs.dokploy.com/docs/core/applicati
 
 ### Transferir el historial antes del primer arranque
 
+**Alternativa, no el modo elegido para este VPS:** estos pasos solo aplican a `PROJECT_OS_INITIALIZATION_MODE=preserve-history` con el identificador existente de Sites. No mezclar una importación con un volumen de inicio limpio.
+
 1. Con el login del propietario, abrir `/deployment` en el sitio actual y descargar el historial. El endpoint `POST /api/deployment/backup` verifica sesión y origen. Exporta solo `ai_runs`, `project_brain_sources`, `brain_requests` y `knowledge_search` del espacio configurado, en una transacción consistente. No ejecuta IA, no modifica datos ni exporta las tablas operativas.
 2. Conservar por separado un respaldo vigente de Supabase (base y originales) y de GBrain. La copia auxiliar **no es un respaldo completo** ni contiene archivos R2 antiguos de otros espacios. Los originales actuales siguen en Supabase. Confirmar descarga, tamaño y checksum mediante el importador, no a través de un chat o vista que pueda truncar textos.
 3. Para el cambio definitivo, esperar a que terminen los análisis y suspender las ediciones manualmente en el sitio anterior; descargar **una copia final nueva**. No activar ambos alojamientos a la vez: comparten Supabase, pero sus historias y cuotas auxiliares serían distintas. Las reservas pendientes se conservan y se informan en el resumen; no se ejecutan ni reanudan automáticamente durante la importación.
@@ -98,11 +100,31 @@ docker run --rm --network none \
 
 Añadir `--apply` **al final** para la importación efectiva. No requiere credenciales de OpenAI, GBrain ni servicio de Supabase; el contenedor de importación no tiene red. En un host Node >=22.13 también puede ejecutarse `node scripts/import-auxiliary.mjs /ruta/privada/copia.json [--apply]` con esas tres variables de destino.
 
-La imagen Docker exige `PROJECT_OS_REQUIRE_AUXILIARY_IMPORT=true`: no inicia el servidor hasta que el volumen contenga el recibo de importación para este mismo espacio. No desactivar esta protección para eludir el traslado. Los límites actuales son 10.000 filas por tabla y 8 MiB de contenido auxiliar total (máximo 32 MiB del JSON). Si se exceden, la descarga falla expresamente y se debe preparar una transferencia por partes; **no entrega un respaldo truncado**.
+En modo `preserve-history`, la imagen Docker exige `PROJECT_OS_REQUIRE_AUXILIARY_IMPORT=true`: no inicia el servidor hasta que el volumen contenga el recibo de importación para este mismo espacio. No desactivar esta protección para eludir el traslado. Los límites actuales son 10.000 filas por tabla y 8 MiB de contenido auxiliar total (máximo 32 MiB del JSON). Si se exceden, la descarga falla expresamente y se debe preparar una transferencia por partes; **no entrega un respaldo truncado**.
+
+### Inicio limpio: únicamente nombres (elegido para el VPS)
+
+Configurar solo en Environment del servicio nuevo de Project OS:
+
+```dotenv
+PROJECT_OS_WORKSPACE_ID=clean_<32 caracteres hexadecimales nuevos>
+PROJECT_OS_INITIALIZATION_MODE=names-only
+PROJECT_OS_INITIAL_PROJECT_NAMES=["Nombre del proyecto 1","Nombre del proyecto 2"]
+PROJECT_OS_REQUIRE_EXISTING_WORKSPACE=true
+PROJECT_OS_REQUIRE_AUXILIARY_IMPORT=true
+```
+
+El primer arranque verifica que tanto el espacio nuevo de Supabase como el volumen estén vacíos. Inserta únicamente proyectos con esos nombres y nuevos IDs. No consulta ni copia los proyectos de otro espacio, no descarga archivos, no llama a OpenAI/GBrain y no crea tareas, notas, reuniones, pagos, repositorios ni historial. Los campos obligatorios reciben valores iniciales: estado **Por iniciar**, comercial **Sin definir**, tipo **Por alcance** y prioridad neutral **3/5**; los textos, fechas y resúmenes quedan vacíos. Todo puede editarse desde la aplicación.
+
+Una marca persistente `preparing → ready` permite reintentar un primer arranque interrumpido, sin sobrescribir datos ni duplicar proyectos. En posteriores arranques nunca se vuelven a insertar los nombres ni se modifica lo que el propietario haya completado. Si el espacio ya existe pero falta la marca local, se rechaza un volumen vacío nuevo: hay que recuperar el volumen original, no reiniciar el historial silenciosamente. Se rechazan espacios antiguos, destinos con contenido, volúmenes importados, datos de otro espacio y cambios en la lista inicial después de inicializarla.
+
+No hace falta subir ni importar el respaldo descargado para este modo. Conservar los archivos locales y el Site anterior sin modificarlos. No apagar las comprobaciones del modo de transferencia: `names-only` tiene su propio control de inicialización y no es una omisión de la protección anterior.
+
+Verificar con `npm run test:names-only` y, tras `npm run build:docker`, `npm run test:names-only:http`. Las pruebas usan Supabase ficticio y SQLite aislado; no crean datos reales ni consumen IA. La prueba HTTP ejecuta el iniciador real y comprueba un primer arranque, reinicio sin duplicados, protección de rutas y rechazo de un volumen perdido. La creación real ocurre solo al desplegar con las variables privadas correctas.
 
 ### Comprobaciones y cambio de alojamiento
 
-Tras autorización de despliegue, confirmar variables, volumen importado y DNS antes de pulsar Deploy. Verificar certificado HTTPS, salud del contenedor y ausencia de errores de permisos. Probar sin sesión: `/` y `/deployment` redirigen a `/login`; las API y documentos no devuelven contenido privado. Con el propietario: login/logout, proyectos/tareas existentes, descarga de una transcripción, análisis anteriores, vínculos de GBrain y búsqueda en contenido. Evitar llamadas de IA de pago durante estas comprobaciones.
+Tras autorización de despliegue, confirmar variables, volumen exclusivo y DNS antes de pulsar Deploy. Verificar certificado HTTPS, salud del contenedor y ausencia de errores de permisos. Probar sin sesión: `/` y `/deployment` redirigen a `/login`; las API y documentos no devuelven contenido privado. En el inicio limpio, con el propietario verificar login/logout, la lista de nombres y ausencia de tareas, documentos e historial antiguos; completar un proyecto desde su formulario. Solo en modo de transferencia se verifican documentos/análisis previos. Evitar llamadas de IA de pago durante estas comprobaciones.
 
 Reiniciar solo la aplicación nueva y confirmar que el historial sigue disponible. Respaldar el volumen completo con la aplicación detenida, incluyendo SQLite y WAL/SHM; no copiar solo el `.sqlite` mientras está escribiendo. Mantener el alojamiento anterior sin uso hasta validar el nuevo. No eliminarlo ni alternar escrituras entre ambos; si el VPS ya recibió actividad, cualquier vuelta atrás requiere conservar/reconciliar primero su historia auxiliar.
 

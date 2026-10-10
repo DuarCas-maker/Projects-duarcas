@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { join, resolve } from "node:path";
 import { openSqlite, migrate } from "../runtime/sqlite.mjs";
 import { requireAuxiliaryImport } from "../runtime/import-auxiliary.mjs";
+import { initializeNamesOnly } from "../runtime/names-only.mjs";
 
 // Fail before listening: no anonymous mode, no demo import into production.
 for (const key of ["SUPABASE_URL", "PROJECT_OS_APP_URL", "PROJECT_OS_OWNER_EMAIL", "PROJECT_OS_WORKSPACE_ID"])
@@ -16,7 +17,12 @@ process.env.PROJECT_OS_DATA_DIR = directory;
 const sql = openSqlite(join(directory, "project-os.sqlite"));
 try {
   migrate(sql);
-  if (process.env.PROJECT_OS_REQUIRE_AUXILIARY_IMPORT === "true") requireAuxiliaryImport(sql, process.env.PROJECT_OS_WORKSPACE_ID);
+  const mode = process.env.PROJECT_OS_INITIALIZATION_MODE || "preserve-history";
+  if (mode === "names-only") {
+    console.log(JSON.stringify(await initializeNamesOnly(sql, process.env)));
+  } else if (mode === "preserve-history") {
+    if (process.env.PROJECT_OS_REQUIRE_AUXILIARY_IMPORT === "true") requireAuxiliaryImport(sql, process.env.PROJECT_OS_WORKSPACE_ID);
+  } else throw new Error("Unknown workspace initialization mode");
 } finally { sql.close(); }
 const root = fileURLToPath(new URL("../", import.meta.url));
 const server = existsSync(join(root, "server.js")) ? join(root, "server.js") : join(root, ".next-node/standalone/server.js");
