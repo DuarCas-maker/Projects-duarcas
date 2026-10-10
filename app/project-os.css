@@ -581,6 +581,12 @@ button { cursor: pointer; }
 .update-warning { padding:.8rem; border-radius:.6rem; background:var(--wine-soft); font-size:.9rem; margin-top:.8rem; color:var(--brand-wine); }
 .update-next { background:var(--purple-soft); border-radius:.8rem; padding:1rem; }
 .update-next button { margin-top:.8rem; }
+.update-repositories { padding:1rem; border:1px solid var(--line); border-radius:.8rem; margin:1rem 0; }
+.update-repository-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,16rem),1fr)); gap:.8rem; margin-top:.8rem; }
+.update-repository-grid article { display:grid; align-content:start; gap:.4rem; padding:1rem; background:var(--soft); border-radius:.6rem; overflow-wrap:anywhere; }
+.update-repository-grid small { font-size:.85rem; line-height:1.6; color:var(--muted-copy); }
+.update-repository-grid a { color:var(--brand-purple); text-decoration:underline; text-underline-offset:3px; font-size:.9rem; }
+.update-repository-grid p { font-size:.9rem; line-height:1.6; white-space:pre-wrap; }
 .content-search-results { width:min(36rem,calc(100vw - 2rem)); right:auto; max-height:78dvh; overflow-y:auto; color:var(--ink); }
 .content-search .search-dismiss { position:fixed; inset:0; z-index:35; width:100vw; height:100vh; cursor:default; }
 .content-search input, .content-search > button:not(.search-dismiss) { position:relative; z-index:41; }

@@ -50,6 +50,7 @@ await assert.rejects(api.linkGithubRepository("owner",state,"p1","https://github
 await assert.rejects(api.linkGithubRepository("owner",state,"foreign","https://github.com/DuarCas-maker/mala-junta"),e=>e.status===404);
 const sync=await api.syncGithubRepository("owner",state,"p1",first.repository.id);
 assert.equal(sync.indexPending,false);assert.equal(sync.source.included,2);assert.equal(sync.source.omitted,2);assert.equal(sync.source.excluded,3);
+assert.equal(sync.source.activity.comparison,"initial");assert.equal(sync.source.activity.previousSha,null);
 assert.equal(state.knowledge.length,1);assert.equal(files.size,1);
 assert.ok(sync.source.files.includes("README.md"));assert.ok(!sync.source.files.includes("src/private.ts"));
 for(const call of calls){assert.equal(new URL(call.url).origin,"https://api.github.com");assert.equal(call.init.method,"GET");assert.equal(call.init.redirect,"manual");assert.equal(call.init.headers.Authorization,undefined);}
@@ -84,5 +85,25 @@ context.fetch=async()=>new Response(null,{status:302,headers:{Location:"https://
 await assert.rejects(api.githubGet("/repos/DuarCas-maker/mala-junta"),e=>e.status===502);
 context.fetch=async()=>new Response("x",{headers:{"content-length":String(api.GITHUB_LIMITS.responseBytes+1)}});
 await assert.rejects(api.githubGet("/repos/DuarCas-maker/mala-junta"),e=>e.status===413);
+context.fetch=originalFetch;
+// A second SHA is compared to the pinned previous SHA. Do not retain patches,
+// credentials, binary paths, or a claim that a task/deployment is complete.
+const changedHead="c".repeat(40),previousHead="d".repeat(40);let comparisonMode="ahead",failComparison=false;
+context.fetch=async(url,init)=>{
+  const path=new URL(url).pathname;
+  if(path.endsWith("/commits/main"))return Response.json({sha:changedHead,commit:{tree:{sha:tree},message:"Technical update only",committer:{date:"2026-10-10T12:00:00Z"}}});
+  if(path.includes("/compare/")){
+    assert.ok(path.endsWith(`${previousHead}...${changedHead}`));
+    if(failComparison)return Response.json({}, {status:404});
+    return Response.json({base_commit:{sha:previousHead},status:comparisonMode,ahead_by:2,behind_by:comparisonMode==="diverged" ? 1 : 0,files:[{filename:"README.md",status:"modified",patch:"DO NOT STORE THIS PATCH"},{filename:".env.local",status:"modified"}]});
+  }
+  return originalFetch(url,init);
+};
+const updated=await api.readGithubSnapshot("DuarCas-maker","mala-junta","main",previousHead);
+assert.equal(updated.activity.comparison,"ahead");assert.equal(updated.activity.files.length,1);assert.equal(updated.activity.partial,true);assert.ok(!JSON.stringify(updated.activity).includes("PATCH") && !JSON.stringify(updated.activity).includes(".env"));
+comparisonMode="diverged";assert.equal((await api.readGithubSnapshot("DuarCas-maker","mala-junta","main",previousHead)).activity.comparison,"diverged");
+failComparison=true;assert.equal((await api.readGithubSnapshot("DuarCas-maker","mala-junta","main",previousHead)).activity.comparison,"unavailable");
+await assert.rejects(api.readGithubSnapshot("DuarCas-maker","mala-junta","main","../bad"),e=>e.status===400);
+assert.equal(api.validGithubActivity({...updated.activity,previousSha:"invalid"}),false);
 context.fetch=originalFetch;
 console.log("GitHub passed: public GET-only, pinned commits, bounded complete files, secret exclusion, idempotency, index retry, multiple-repository isolation, owner auth and CSRF.");

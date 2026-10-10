@@ -15,6 +15,7 @@ import { requestProjectUpdate } from "@/lib/project-update-provider";
 import { CoreValidationError } from "@/lib/core-commands";
 import { persistCorePlan } from "@/db/core-mutations";
 import { SupabaseConflictError } from "@/db/supabase";
+import { repositoryFollowupContext } from "@/db/repositories";
 
 export const dynamic="force-dynamic";
 const json=(value:unknown,status=200)=>Response.json(value,{status,headers:{"Cache-Control":"no-store"}});
@@ -37,7 +38,7 @@ async function current(projectId:unknown,meetingId:unknown) {
   const parts=meeting ? await meetingParts(userId,projectId,meetingQueryPrefix(meetingId,meeting.fingerprint)) : [];
   const analysis=combineMeetingParts(parts),snapshot=projectUpdateSnapshot(state,projectId,meetingId,analysis);
   const links=(await memoryRows(userId,projectId)).map(r=>({id:r.knowledge_id,status:r.status,hash:r.content_hash,indexedAt:r.indexed_at}));
-  const revision=await contentHash(JSON.stringify({contextVersion:2,state:projectUpdateSignature(state,projectId,meetingId),parts,links}));
+  const revision=await contentHash(JSON.stringify({contextVersion:3,state:projectUpdateSignature(state,projectId,meetingId),parts,links}));
   return {userId,state,project,meetingId,analysis,snapshot,revision,query:updatePrefix(meetingId)+revision};
 }
 export async function GET(request:Request) {
@@ -79,8 +80,9 @@ export async function POST(request:Request) {
     let memory:BrainMemory;
     try {memory=await recallMemory(c.userId,[c.project.id],`Estado, acuerdos, bloqueadores y próxima acción de ${c.project.name}${c.snapshot.meeting ? ` después de ${c.snapshot.meeting.title}` : ""}`.slice(0,1000),body.requestId);}
     catch {memory={status:"unavailable",hits:[],warning:"No se pudo consultar GBrain. La lectura usa solo registros y análisis guardados de Project OS."};}
-    const context=projectUpdateContext(c.state,c.snapshot,c.analysis,memory),output=await requestProjectUpdate(context),result=validateProjectUpdate(output.result,context);
-    const saved={revision:c.revision,result,sources:context.labels,coverage:{included:context.sources.size,omitted:context.omittedRecords},memory:{status:memory.status,count:memory.hits.length,warning:memory.warning}};
+    const repositories=await repositoryFollowupContext(c.userId,c.state,c.project.id);
+    const context=projectUpdateContext(c.state,c.snapshot,c.analysis,memory,repositories),output=await requestProjectUpdate(context),result=validateProjectUpdate(output.result,context);
+    const saved={revision:c.revision,result,sources:context.labels,coverage:{included:context.sources.size,omitted:context.omittedRecords},repositories:context.repositories,memory:{status:memory.status,count:context.memoryCount,warning:memory.warning}};
     await finishAiRun(c.userId,body.requestId,saved,output.usage?.input_tokens,output.usage?.output_tokens);reserved=undefined;
     return json({latest:{id:body.requestId,createdAt:new Date().toISOString(),...saved}});
   } catch(error) {if(reserved) await failAiRun(reserved.userId,reserved.id).catch(()=>undefined);return failure(error);}

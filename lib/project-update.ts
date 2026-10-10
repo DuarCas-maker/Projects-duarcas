@@ -4,11 +4,13 @@ import { bogotaDay, eligibleTasks, rankTask } from "./daily-engine";
 import { readMeeting } from "./meetings";
 import { FINDING_LABELS, type MeetingAnalysis } from "./meeting-analysis";
 import { buildCoreCommand, CoreValidationError } from "./core-commands";
+import { repositoryFollowup, projectRepositorySources, type RepositoryFollowup, type RepositoryFollowupInput } from "./github-context";
 
 export type UpdateClaim = { text: string; sourceIds: string[] };
 export type ProjectUpdateResult = {
   summary: string; summarySourceIds: string[]; changes: UpdateClaim[];
   pending: UpdateClaim[]; risks: UpdateClaim[];
+  technicalActivity?: UpdateClaim[];
   nextAction: { taskId: string | null; title: string; reason: string; sourceIds: string[] };
 };
 export type UpdateItem = { id: string; title: string; description: string; type: string };
@@ -17,11 +19,13 @@ export type ProjectUpdateSnapshot = {
   applied: UpdateItem[]; recent:UpdateItem[]; pending: UpdateItem[]; unreviewedCount: number;
   counts: { open: number; completed: number; blocked: number; overdue: number };
   candidates: { id: string; title: string; reason: string; priority: number; minutes: number }[];
+  repositories: RepositoryFollowup[];
 };
 export type ProjectUpdateRecord = {
   id: string; createdAt: string; revision: string; result: ProjectUpdateResult;
   sources: Record<string, string>; memory: { status: string; count: number; warning?: string };
   coverage?:{included:number;omitted:number};
+  repositories?: (RepositoryFollowup & { excerpt: boolean; unavailable: boolean; used: boolean })[];
 };
 
 export function projectUpdateSignature(state: Workspace, projectId: string, meetingId: string) {
@@ -35,6 +39,7 @@ export function projectUpdateSignature(state: Workspace, projectId: string, meet
     events: sort(state.events.filter(e => e.projectId === projectId)),
     suggestions: sort(state.suggestions.filter(s => s.projectId === projectId)),
     knowledge: sort(state.knowledge.filter(k => k.projectId === projectId)),
+    repositories: sort(state.repositories.filter(r => r.projectId === projectId)),
   });
 }
 
@@ -69,21 +74,32 @@ export function projectUpdateSnapshot(state: Workspace, projectId: string, meeti
   const tasks = state.tasks.filter(t => t.projectId === projectId), open = tasks.filter(t => !["completed","cancelled"].includes(t.status));
   return { projectId, meeting: item && meeting ? {id:item.id,title:item.title,date:meeting.date,status:analysis.status,completedParts:analysis.completedParts,totalParts:analysis.totalParts} : null,
     applied, recent, pending, unreviewedCount:unreviewed.length,
+    repositories:repositoryFollowup(state,project.userId,projectId),
     counts:{open:open.length,completed:tasks.filter(t => t.status === "completed").length,blocked:open.filter(t => t.isBlocked).length,overdue:open.filter(t => t.deadline && t.deadline < bogotaDay()).length},
     candidates:eligibleTasks(state).filter(t => t.projectId === projectId).slice(0,5).map(t => ({id:t.id,title:t.title,reason:rankTask(t,state).reason,priority:t.priority,minutes:t.estimatedMinutes})),
   };
 }
 
-export function projectUpdateContext(state: Workspace, snapshot: ProjectUpdateSnapshot, analysis: MeetingAnalysis, memory: BrainMemory) {
+export function projectUpdateContext(state: Workspace, snapshot: ProjectUpdateSnapshot, analysis: MeetingAnalysis, memory: BrainMemory, repositoryContext: RepositoryFollowupInput[] = []) {
   const project = state.projects.find(p => p.id === snapshot.projectId)!;
   const records: {id:string;type:string;data:unknown}[] = [{id:project.id,type:"project",data:{name:project.name,description:project.description,currentSummary:project.currentSummary,nextStepSummary:project.nextStepSummary,operationalStatus:project.operationalStatus,commercialStatus:project.commercialStatus,priority:project.priority,strategicPriority:project.strategicPriority,blockedReason:project.blockedReason,targetEndDate:project.targetEndDate}},
     {id:`status:${project.id}`,type:"current_counts",data:{...snapshot.counts,candidates:snapshot.candidates}}];
   const add = (id:string,type:string,data:unknown) => records.push({id,type,data});
+  const activeSources = projectRepositorySources(state,project.userId,project.id), activeIds = new Set(activeSources.map(s=>s.item.id));
+  const repos = repositoryFollowup(state,project.userId,project.id);
+  const scopedMemory = memory.hits.filter(h => h.projectId === project.id && (!h.knowledgeId || !state.knowledge.some(k=>k.id===h.knowledgeId && k.itemType==="repository") || activeIds.has(h.knowledgeId)));
+  // Put ranked tasks and independently bounded repository excerpts early so
+  // large meeting/history records cannot crowd out the whole technical view.
+  for (const candidate of snapshot.candidates) {const task=state.tasks.find(t=>t.id===candidate.id)!;if(!records.some(r=>r.id===task.id)){const {userId:_,...row}=task;add(task.id,"task",{...row,ranking:rankTask(task,state)});}}
+  for (const repo of repos) {
+    const original = repositoryContext.find(r=>r.knowledgeId===repo.knowledgeId);
+    add(repo.knowledgeId ?? repo.id,"github_snapshot_NOT_operational_completion",{...repo,text:original?.text ?? "",excerpt:original?.excerpt ?? false,originalUnavailable:!!repo.knowledgeId && (!original || original.unavailable),notLive:true});
+  }
   if (snapshot.meeting) add(snapshot.meeting.id,"meeting_analysis_NOT_operational_state",{...snapshot.meeting,summaries:analysis.summaries});
   snapshot.applied.forEach(row => add(row.id,"approved_change",row));
   snapshot.recent.forEach(row=>add(row.id,"other_confirmed_change_since_meeting_DATE_NOT_CAUSED_BY_MEETING",row));
-  for (const candidate of snapshot.candidates) {const task=state.tasks.find(t=>t.id===candidate.id)!;if(!records.some(r=>r.id===task.id)){const {userId:_,...row}=task;add(task.id,"task",{...row,ranking:rankTask(task,state)});}}
-  memory.hits.filter(h => h.projectId === project.id).forEach(row => add(row.id,"gbrain_retrieved_excerpt_NOT_entire_memory",row));
+  state.knowledge.filter(k=>k.projectId===project.id && k.userId===project.userId && !["meeting","repository"].includes(k.itemType)).slice().sort((a,b)=>b.occurredAt.localeCompare(a.occurredAt)).forEach(k=>add(k.id,"local_knowledge_summary_NOT_full_document",{title:k.title,itemType:k.itemType,summary:k.summary,occurredAt:k.occurredAt}));
+  scopedMemory.forEach(row => add(row.id,"gbrain_retrieved_excerpt_NOT_entire_memory",row));
   snapshot.pending.forEach(row => add(row.id,"pending_NOT_applied",row));
   const tasks = state.tasks.filter(t => t.projectId === project.id).sort((a,b) => rankTask(b,state).score-rankTask(a,state).score);
   for (const task of tasks) if (!records.some(r => r.id === task.id)) {const {userId:_,...row}=task;add(task.id,"task",{...row,ranking:rankTask(task,state)});}
@@ -95,10 +111,12 @@ export function projectUpdateContext(state: Workspace, snapshot: ProjectUpdateSn
   const selected: typeof records = []; let size = 0, omitted = 0;
   for (const record of records) {const length=JSON.stringify(record).length;if(size+length>44000){omitted++;continue;}selected.push(record);size+=length;}
   const sources = new Set(selected.map(r => r.id));
-  const names:Record<string,string>={project:"Proyecto",current_counts:"Estado y prioridades",meeting_analysis_NOT_operational_state:"Análisis de reunión · no confirmado",approved_change:"Cambio confirmado",other_confirmed_change_since_meeting_DATE_NOT_CAUSED_BY_MEETING:"Historial desde la fecha",pending_NOT_applied:"Pendiente · no aplicado",task:"Tarea",milestone:"Hito",financial:"Finanzas",history:"Historial",gbrain_retrieved_excerpt_NOT_entire_memory:"Memoria GBrain"};
+  const names:Record<string,string>={project:"Proyecto",current_counts:"Estado y prioridades",meeting_analysis_NOT_operational_state:"Análisis de reunión · no confirmado",approved_change:"Cambio confirmado",other_confirmed_change_since_meeting_DATE_NOT_CAUSED_BY_MEETING:"Historial desde la fecha",pending_NOT_applied:"Pendiente · no aplicado",task:"Tarea",milestone:"Hito",financial:"Finanzas",history:"Historial",gbrain_retrieved_excerpt_NOT_entire_memory:"Memoria GBrain",github_snapshot_NOT_operational_completion:"GitHub · versión guardada",local_knowledge_summary_NOT_full_document:"Fuente local · resumen"};
   const labels = Object.fromEntries(selected.map(r => {const data=r.data as {title?:string;name?:string};return [r.id,`${names[r.type]??r.type}: ${data.title ?? data.name ?? (r.id.startsWith("status:") ? "Recuento y prioridades actuales" : r.id)}`];}));
-  return {sources,labels,omittedRecords:omitted,changeSources:new Set([...snapshot.applied,...snapshot.recent].map(r => r.id).filter(id => sources.has(id))),pendingSources:new Set(snapshot.pending.map(r => r.id).filter(id => sources.has(id))),taskIds:new Set(snapshot.candidates.map(t => t.id).filter(id => sources.has(id))),
-    text:JSON.stringify({today:bogotaDay(),timezone:"America/Bogota",scope:project.id,memory:{status:memory.status,warning:memory.warning},omittedRecords:omitted,records:selected})};
+  return {sources,labels,omittedRecords:omitted,memoryCount:selected.filter(r=>r.type==="gbrain_retrieved_excerpt_NOT_entire_memory").length,repositories:repos.map(repo=>{const original=repositoryContext.find(r=>r.knowledgeId===repo.knowledgeId);return {...repo,excerpt:original?.excerpt ?? false,unavailable:!!repo.knowledgeId && (!original || original.unavailable),used:sources.has(repo.knowledgeId ?? repo.id)};}),
+    technicalSources:new Set(repos.filter(r=>r.knowledgeId && sources.has(r.knowledgeId)).map(r=>r.knowledgeId!)),
+    changeSources:new Set([...snapshot.applied,...snapshot.recent].map(r => r.id).filter(id => sources.has(id))),pendingSources:new Set(snapshot.pending.map(r => r.id).filter(id => sources.has(id))),taskIds:new Set(snapshot.candidates.map(t => t.id).filter(id => sources.has(id))),
+    text:JSON.stringify({today:bogotaDay(),timezone:"America/Bogota",scope:project.id,memory:{status:memory.status,warning:memory.warning,supersededGithubHitsOmitted:memory.hits.filter(h=>h.projectId===project.id).length-scopedMemory.length},github:{live:false,notTaskCompletion:true},omittedRecords:omitted,records:selected})};
 }
 
 export function validateProjectUpdate(value: unknown, context: ReturnType<typeof projectUpdateContext>): ProjectUpdateResult {
@@ -108,6 +126,7 @@ export function validateProjectUpdate(value: unknown, context: ReturnType<typeof
   const ids = (values:unknown,allowed:Set<string>) => Array.isArray(values) && values.length > 0 && values.length <= 8 && values.every(id => typeof id === "string" && allowed.has(id));
   const claims = (values:unknown,allowed:Set<string>) => Array.isArray(values) && values.length <= 6 && values.every(c => c && str(c.text,900) && ids(c.sourceIds,allowed));
   if (!row || !str(row.summary,2000) || !ids(row.summarySourceIds,context.sources) || !claims(row.changes,context.changeSources) || !claims(row.pending,context.pendingSources) || !claims(row.risks,context.sources)) return fail();
+  if (row.technicalActivity !== undefined && !claims(row.technicalActivity,context.technicalSources)) return fail();
   if (!row.nextAction || !str(row.nextAction.title,180) || !str(row.nextAction.reason,1000) || !ids(row.nextAction.sourceIds,context.sources)) return fail();
   if (row.nextAction.taskId !== null && (!context.taskIds.has(row.nextAction.taskId) || !row.nextAction.sourceIds.includes(row.nextAction.taskId))) return fail();
   return row;

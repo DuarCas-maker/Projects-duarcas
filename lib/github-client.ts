@@ -1,4 +1,5 @@
 import { safeMemoryText } from "./brain-content";
+import type { GithubActivity } from "./github-context";
 
 export class GithubError extends Error {
   constructor(message: string, public status = 503) { super(message); this.name = "GithubError"; }
@@ -65,8 +66,23 @@ function filePriority(path: string) {
   if (/^(?:package\.json|dockerfile|compose\.ya?ml|requirements\.txt|pyproject\.toml)$/i.test(path)) return 2;
   return 3;
 }
+async function githubActivity(owner: string, repo: string, sha: string, head: any, previousSha?: string): Promise<GithubActivity> {
+  let message = ""; try { message = safeMemoryText(String(head.commit?.message ?? "").slice(0,1000)); } catch { message = "[Mensaje omitido por seguridad]"; }
+  const date = head.commit?.committer?.date;
+  const activity: GithubActivity = {message,committedAt:typeof date === "string" && /^\d{4}-\d{2}-\d{2}T/.test(date) && Number.isFinite(Date.parse(date)) ? new Date(date).toISOString() : null,previousSha:previousSha ?? null,comparison:previousSha ? "unavailable" : "initial",aheadBy:null,behindBy:null,files:[],partial:true};
+  if (!previousSha) return activity;
+  try {
+    const comparison = await githubGet(`/repos/${owner}/${repo}/compare/${previousSha}...${sha}?per_page=1`);
+    if (comparison.base_commit?.sha !== previousSha || !["ahead","behind","diverged","identical"].includes(comparison.status) || !Array.isArray(comparison.files) || ![comparison.ahead_by,comparison.behind_by].every(n=>Number.isSafeInteger(n) && n >= 0)) return activity;
+    const files = comparison.files.filter((f:any)=>f && typeof f.filename === "string" && ["added","removed","modified","renamed","copied","changed","unchanged"].includes(f.status) && eligibleGithubFile({path:f.filename,sha:"0".repeat(40),size:0,type:"blob",mode:"100644"}));
+    const safeFiles: GithubActivity["files"] = [];
+    for (const file of files.slice(0,20)) { try { safeFiles.push({path:safeMemoryText(file.filename),status:file.status}); } catch { /* Never expose credential-like paths. */ } }
+    return {...activity,comparison:comparison.status,aheadBy:comparison.ahead_by,behindBy:comparison.behind_by,files:safeFiles,partial:comparison.files.length >= 300 || safeFiles.length !== comparison.files.length};
+  } catch { return activity; } // Snapshot remains useful even if comparison is unavailable.
+}
 export async function readGithubSnapshot(owner: string, repo: string, branch: string, previousSha?: string) {
   githubRepositoryUrl(`https://github.com/${owner}/${repo}`); githubBranch(branch);
+  if (previousSha !== undefined && !/^[a-f0-9]{40}$/.test(previousSha)) throw new GithubError("La versión anterior no es válida.",400);
   // Re-check visibility on every sync: a revoked/public-to-private repository
   // must never be refreshed using the agent's own GitHub connection.
   await githubMetadata(owner,repo);
@@ -96,9 +112,9 @@ export async function readGithubSnapshot(owner: string, repo: string, branch: st
     if (pathBytes > 8192) break;
     paths.push(file.path);
   }
-  let message = ""; try { message = safeMemoryText(String(head.commit?.message ?? "").slice(0,1000)); } catch { message = "[Mensaje omitido por seguridad]"; }
-  const content = safeMemoryText([`GITHUB · FUENTE DE SOLO LECTURA · COBERTURA PARCIAL\nRepositorio: ${owner}/${repo}\nRama: ${branch}\nCommit: ${sha}\nReferencia: https://github.com/${owner}/${repo}/tree/${sha}\nMensaje del commit: ${message}\nArchivos completos incluidos: ${files.length}. Archivos de texto elegibles no leídos: ${eligible.length-files.length}. Archivos excluidos por tipo o seguridad: ${raw.length-eligible.length}. Árbol truncado por GitHub: ${tree.truncated === true ? "sí" : "no"}.\nNo es evidencia de que las tareas estén terminadas; no contiene conversaciones de Codex ni cambios locales.`,
+  const activity = await githubActivity(owner,repo,sha,head,previousSha);
+  const content = safeMemoryText([`GITHUB · FUENTE DE SOLO LECTURA · COBERTURA PARCIAL\nRepositorio: ${owner}/${repo}\nRama: ${branch}\nCommit: ${sha}\nReferencia: https://github.com/${owner}/${repo}/tree/${sha}\nMensaje del commit: ${activity.message}\nActividad técnica guardada: ${JSON.stringify(activity)}\nArchivos completos incluidos: ${files.length}. Archivos de texto elegibles no leídos: ${eligible.length-files.length}. Archivos excluidos por tipo o seguridad: ${raw.length-eligible.length}. Árbol truncado por GitHub: ${tree.truncated === true ? "sí" : "no"}.\nNo es evidencia de que las tareas estén terminadas; no contiene conversaciones de Codex ni cambios locales.`,
     `ESTRUCTURA (máximo ${GITHUB_LIMITS.paths} rutas)\n${paths.join("\n")}`,
     ...files.map(f=>`ARCHIVO COMPLETO: ${f.path}\nReferencia: ${f.url}\n\n${f.text}`)].join("\n\n"));
-  return {unchanged:false as const,sha,content,files:files.map(f=>f.path),included:files.length,omitted:eligible.length-files.length,excluded:raw.length-eligible.length,treeTruncated:tree.truncated === true};
+  return {unchanged:false as const,sha,content,activity,files:files.map(f=>f.path),included:files.length,omitted:eligible.length-files.length,excluded:raw.length-eligible.length,treeTruncated:tree.truncated === true};
 }

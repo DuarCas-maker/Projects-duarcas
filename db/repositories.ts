@@ -6,7 +6,7 @@ import { insertSupabaseRow, isSupabaseConfigured, updateSupabaseRow, uploadSupab
 import { getWorkspaceState } from "./workspace";
 import { contentHash } from "@/lib/brain-content";
 import { githubRepositoryUrl, githubMetadata, githubBranch, readGithubSnapshot, GithubError } from "@/lib/github-client";
-import { GITHUB_SOURCE_PREFIX, GITHUB_STATUS_PREFIX, projectRepositorySources, type GithubSource } from "@/lib/github-context";
+import { GITHUB_SOURCE_PREFIX, GITHUB_STATUS_PREFIX, projectRepositorySources, type GithubSource, type RepositoryFollowupInput } from "@/lib/github-context";
 import { knowledgeText } from "@/lib/brain-provider";
 import { indexKnowledge } from "./knowledge-search";
 import type { Workspace } from "@/lib/workspace-types";
@@ -54,10 +54,13 @@ export async function syncGithubRepository(userId: string, state: Workspace, pro
     return {unchanged:true,source:previous.source,indexPending};
   }
   if (snapshot.unchanged) throw new GithubError("No se encontró el contexto guardado. Vuelve a sincronizar.",409);
-  const id = `github-${(await contentHash(`v1:${userId}:${projectId}:${repository.id}:${snapshot.sha}`)).slice(0,40)}`;
+  // A branch can return to a previously seen SHA. Keep the transition's base
+  // in the immutable snapshot ID so its comparison is not reused from an old
+  // visit to that SHA. Retries from the same base still have the same ID.
+  const id = `github-${(await contentHash(`v2:${userId}:${projectId}:${repository.id}:${snapshot.sha}:${previous?.source.sha ?? "initial"}`)).slice(0,40)}`;
   let item = state.knowledge.find(k=>k.id === id && k.projectId === projectId && k.userId === userId);
   if (!item) {
-    const source: GithubSource = {version:1,repositoryId:repository.id,owner:repository.owner,repo:repository.repo,branch:repository.defaultBranch,sha:snapshot.sha,url:`https://github.com/${repository.owner}/${repository.repo}/tree/${snapshot.sha}`,files:snapshot.files,included:snapshot.included,omitted:snapshot.omitted,excluded:snapshot.excluded,treeTruncated:snapshot.treeTruncated};
+    const source: GithubSource = {version:1,repositoryId:repository.id,owner:repository.owner,repo:repository.repo,branch:repository.defaultBranch,sha:snapshot.sha,url:`https://github.com/${repository.owner}/${repository.repo}/tree/${snapshot.sha}`,files:snapshot.files,included:snapshot.included,omitted:snapshot.omitted,excluded:snapshot.excluded,treeTruncated:snapshot.treeTruncated,activity:snapshot.activity};
     const key = `${userId}/${projectId}/${id}-github.md`;
     const next: Workspace["knowledge"][number] = {id,userId,projectId,itemType:"repository",title:`${repository.owner}/${repository.repo} · ${snapshot.sha.slice(0,7)}`,summary:`${snapshot.included} archivos completos · ${snapshot.omitted} archivos elegibles sin leer · contexto parcial de GitHub, solo lectura`,sourceReference:GITHUB_SOURCE_PREFIX+JSON.stringify(source),storageKey:key,processingStatus:"uploaded",occurredAt:new Date().toISOString()};
     if (isSupabaseConfigured()) {
@@ -76,6 +79,21 @@ export async function syncGithubRepository(userId: string, state: Workspace, pro
   await pointToSnapshot(userId,repository,item.id);
   let indexPending = false; try { indexPending = (await indexKnowledge(userId,item,true)).status !== "ready"; } catch { indexPending = true; }
   return {unchanged:false,source:projectRepositorySources({...state,repositories:state.repositories.map(r=>r.id === repository.id ? {...r,status:GITHUB_STATUS_PREFIX+item!.id} : r),knowledge:[...state.knowledge.filter(k=>k.id !== item!.id),item]},userId,projectId).find(s=>s.repository.id === repository.id)?.source,indexPending};
+}
+export async function repositoryFollowupContext(userId: string, state: Workspace, projectId: string): Promise<RepositoryFollowupInput[]> {
+  ownedRepositoryProject(state,userId,projectId);
+  const sources = projectRepositorySources(state,userId,projectId);
+  // Share a fixed excerpt budget across repositories rather than allowing the
+  // first repository to consume all context. No network sync or paid calls.
+  const budget = Math.min(6000,Math.floor(12000/Math.max(1,sources.length)));
+  return Promise.all(sources.map(async ({item}) => {
+    try {
+      const text = await knowledgeText(userId,item);
+      let excerpt = text.slice(0,budget);
+      if (/[\uD800-\uDBFF]$/.test(excerpt)) excerpt = excerpt.slice(0,-1);
+      return {knowledgeId:item.id,text:excerpt,excerpt:text.length > excerpt.length,unavailable:false};
+    } catch { return {knowledgeId:item.id,text:"",excerpt:false,unavailable:true}; }
+  }));
 }
 export async function githubContextPack(userId: string, state: Workspace, projectId: string, repositoryId?: string) {
   const project = ownedRepositoryProject(state,userId,projectId);

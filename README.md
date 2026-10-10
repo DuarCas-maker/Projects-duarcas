@@ -140,6 +140,17 @@ Pruebas adicionales: `npm run test:transfer` y `npm run test:auth:http` (esta ú
 
 ## Desarrollo y publicación
 
+### Seguimiento unificado (fase 5)
+
+En **Proyectos → proyecto → Resumen → Seguimiento unificado**, la lectura combina el estado operativo, tareas elegibles y prioridades, análisis de la reunión seleccionada, decisiones/resúmenes locales, memoria recuperada de GBrain y las versiones activas de los repositorios de **ese proyecto**. No incluye conversaciones de Codex ni cambios locales sin subir.
+
+1. Vincular los repositorios desde **Contexto** y usar **Sincronizar** después de un push. La sincronización no consume OpenAI. Guarda el SHA, código permitido y, si hay una versión anterior diferente, una comparación acotada de archivos cambiados entre ambas versiones. No lee ni guarda los parches de esa comparación. La primera copia no tiene comparación; si GitHub la rechaza se informa sin inventar cambios. Las ramas que retroceden o divergen no se consideran avance lineal.
+2. Analizar la reunión y revisar sus propuestas en Aprobaciones. Hallazgos sin aprobar, commits y requisitos del código no son tareas completadas ni cambios operativos.
+3. En **Resumen**, revisar versiones/cobertura y pulsar **Generar actualización**. Se usa una consulta de la cuota compartida. La lectura muestra estado, actividad técnica separada, cambios confirmados, asuntos pendientes, riesgos/discrepancias y una siguiente acción con evidencia. GitHub usa la copia guardada, no una consulta en vivo.
+4. Revisar y editar antes de **Confirmar y guardar**. Solo cambian el resumen y la siguiente acción; fechas, pagos, tareas y estados no se modifican automáticamente. Cambios en repositorios, fuentes, tareas, reunión o memoria invalidan la lectura anterior y bloquean aplicarla.
+
+La lectura no promete 100% de cobertura: reparte hasta 12.000 caracteres de extractos entre los repositorios (hasta 6.000 por repositorio), conserva límites del contexto total, informa originales no disponibles/repositorios sin sincronizar y excluye memoria de versiones de GitHub reemplazadas. Consultar/ver la lectura guardada no genera otra consulta. No requiere nuevas tablas, secretos ni permisos de GitHub.
+
 - `node node_modules/typescript/bin/tsc --noEmit`: tipos.
 - `npm run test:auth`: autorización, propietario, cookies, renovación, cierre y rechazo de origen cruzado, con datos ficticios.
 - `npm run test:node`: persistencia, migraciones, transacciones y originales privados.
