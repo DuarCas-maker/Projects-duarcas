@@ -60,7 +60,9 @@ assert.equal(declarations(".login-screen").get("background"), "var(--brand-black
 assert.equal(declarations(".login-card").get("background"), "var(--brand-white)", "The login card stays white");
 assert.equal(tokens.get("--paper"), "#FAFAFA", "The rest of the application keeps its light surfaces");
 const login = await readFile(new URL("app/login/login-form.tsx", root), "utf8");
-assert.ok(login.includes('className="login-wordmark">duarcas</span>'), "The login wordmark must display duarcas");
+assert.ok(login.includes('className="login-wordmark">DUARCAS</span>'), "The login wordmark must display DUARCAS in uppercase");
+assert.equal(declarations(".login-brand").get("place-items"), "center", "The login wordmark must be centered");
+assert.equal(declarations(".login-brand > svg").get("position"), "absolute", "The lock icon must not shift the wordmark's center");
 assert.ok(!login.includes("<span>OS</span>") && !login.includes("Accede con tu correo y contraseña de Supabase"), "Old login badge and helper copy must be removed");
 assert.ok(login.includes('type="email"') && login.includes('type="password"') && login.includes('action: "login"'), "Owner authentication form must remain intact");
 const manifest = JSON.parse(await readFile(new URL("public/manifest.webmanifest", root), "utf8"));
