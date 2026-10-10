@@ -609,4 +609,6 @@ button { cursor: pointer; }
 button:focus-visible, a:focus-visible { outline: 2px solid var(--brand-purple); outline-offset: 3px; }
 .app-sidebar button:focus-visible, .mobile-nav button:focus-visible { outline-color: var(--purple-on-dark); }
 input[type="checkbox"], input[type="radio"] { accent-color: var(--brand-wine); }
+/* Browser autofill must not introduce a blue surface into the brand palette. */
+input:is(:autofill, :-webkit-autofill) { -webkit-text-fill-color: var(--ink); box-shadow: 0 0 0 1000px var(--surface) inset; caret-color: var(--ink); }
 ::selection { background: var(--purple-soft); color: var(--brand-purple); }
