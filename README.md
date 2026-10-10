@@ -73,7 +73,7 @@ El compose expone solo `127.0.0.1:3001`; Dokploy debe enrutar su dominio al puer
 
 ### Preparación específica de Dokploy
 
-Crear **una aplicación nueva** `Project OS` dentro de `Project / production`, sin editar el servicio Supabase, GBrain o variables compartidas. Fuente Git pública: `https://github.com/DuarCas-maker/Projects-duarcas.git`, rama `main`, Build Path `/`. Build Type **Dockerfile**, Docker File `Dockerfile`, Context `.`, Stage `runner`. Mantener **Autodeploy desactivado** hasta completar el cambio de alojamiento.
+La aplicación `Project OS` está en `Project / production`, separada de Supabase, GBrain y las variables compartidas. Su fuente es la integración **GitHub** de Dokploy con `DuarCas-maker/Projects-duarcas`, rama `main`, Build Path `/` y Trigger Type **On Push**. **Autodeploy está activado**: cada push a `main` solicita un despliegue de este servicio. Se reutiliza la GitHub App ya conectada; no se cambian permisos ni proveedores de otros servicios. Build Type **Dockerfile**, Docker File `Dockerfile`, Context `.`, Stage `runner`. No añadir un segundo disparador por webhook o GitHub Actions mientras esté activo este flujo.
 
 En Advanced → Volumes: volumen nombrado **`project-os-data`** montado en **`/data`**, de uso exclusivo de esta aplicación, con permisos de escritura para UID/GID `1000:1000`. Una sola réplica, anclada al mismo VPS, y actualizaciones `stop-first`: SQLite local no debe compartirse entre réplicas ni coexistir con dos versiones activas. No añadir puertos del host; Traefik usa el puerto interno `3000`. No tocar la configuración global del clúster.
 
