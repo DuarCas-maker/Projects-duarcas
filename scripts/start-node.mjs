@@ -3,6 +3,7 @@ import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { join, resolve } from "node:path";
 import { openSqlite, migrate } from "../runtime/sqlite.mjs";
+import { requireAuxiliaryImport } from "../runtime/import-auxiliary.mjs";
 
 // Fail before listening: no anonymous mode, no demo import into production.
 for (const key of ["SUPABASE_URL", "PROJECT_OS_APP_URL", "PROJECT_OS_OWNER_EMAIL", "PROJECT_OS_WORKSPACE_ID"])
@@ -13,7 +14,10 @@ process.env.PROJECT_OS_REQUIRE_EXISTING_WORKSPACE = "true";
 const directory = resolve(process.env.PROJECT_OS_DATA_DIR || ".node-runtime");
 process.env.PROJECT_OS_DATA_DIR = directory;
 const sql = openSqlite(join(directory, "project-os.sqlite"));
-try { migrate(sql); } finally { sql.close(); }
+try {
+  migrate(sql);
+  if (process.env.PROJECT_OS_REQUIRE_AUXILIARY_IMPORT === "true") requireAuxiliaryImport(sql, process.env.PROJECT_OS_WORKSPACE_ID);
+} finally { sql.close(); }
 const root = fileURLToPath(new URL("../", import.meta.url));
 const server = existsSync(join(root, "server.js")) ? join(root, "server.js") : join(root, ".next-node/standalone/server.js");
 if (!existsSync(server)) throw new Error("Build with npm run build:docker first");

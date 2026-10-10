@@ -20,3 +20,8 @@ data
 .openai
 build
 vite.config.ts
+**/project-os-history*.json
+**/*.sqlite
+**/*.sqlite-wal
+**/*.sqlite-shm
+deploy/*.env

@@ -63,6 +63,51 @@ El compose expone solo `127.0.0.1:3001`; Dokploy debe enrutar su dominio al puer
 
 **Verificación:** la compilación standalone y las pruebas de Node se pueden ejecutar sin Docker. La construcción/ejecución real de la imagen requiere un Docker Engine disponible; una compilación Node exitosa no sustituye esa prueba.
 
+### Preparación específica de Dokploy
+
+Crear **una aplicación nueva** `Project OS` dentro de `Project / production`, sin editar el servicio Supabase, GBrain o variables compartidas. Fuente Git pública: `https://github.com/DuarCas-maker/Projects-duarcas.git`, rama `main`, Build Path `/`. Build Type **Dockerfile**, Docker File `Dockerfile`, Context `.`, Stage `runner`. Mantener **Autodeploy desactivado** hasta completar el cambio de alojamiento.
+
+En Advanced → Volumes: volumen nombrado **`project-os-data`** montado en **`/data`**, de uso exclusivo de esta aplicación, con permisos de escritura para UID/GID `1000:1000`. Una sola réplica, anclada al mismo VPS, y actualizaciones `stop-first`: SQLite local no debe compartirse entre réplicas ni coexistir con dos versiones activas. No añadir puertos del host; Traefik usa el puerto interno `3000`. No tocar la configuración global del clúster.
+
+La plantilla sin secretos está en `deploy/dokploy.env.example`. Rellenar sus campos vacíos **solo en Environment del servicio nuevo**, no en Git ni Build Time Arguments. Usar las credenciales existentes de esta aplicación, no tokens owner/admin de GBrain. Sites oculta los secretos existentes y no permite recuperarlos con su herramienta de lectura: trasladarlos desde el lugar privado donde el propietario los conserva, sin publicarlos ni rotarlos.
+
+Dominio previsto: `projects-duarcas.brant--co.com`, Path `/`, Internal Path `/`, Strip Path desactivado, puerto `3000`, HTTPS y Let's Encrypt. Antes de añadirlo, comprobar que **ese registro A específico** apunta a `72.60.168.172`. Si hay un AAAA para ese mismo nombre, debe apuntar al servidor correcto. No cambiar el DNS del dominio raíz, del correo, de GBrain ni de otras aplicaciones. En Sites conservar su `PROJECT_OS_APP_URL` actual; solo Dokploy usa el origen nuevo.
+
+Referencias oficiales: [Dockerfile](https://docs.dokploy.com/docs/core/applications/build-type), [variables por servicio](https://docs.dokploy.com/docs/core/variables) y [dominios](https://docs.dokploy.com/docs/core/domains).
+
+### Transferir el historial antes del primer arranque
+
+1. Con el login del propietario, abrir `/deployment` en el sitio actual y descargar el historial. El endpoint `POST /api/deployment/backup` verifica sesión y origen. Exporta solo `ai_runs`, `project_brain_sources`, `brain_requests` y `knowledge_search` del espacio configurado, en una transacción consistente. No ejecuta IA, no modifica datos ni exporta las tablas operativas.
+2. Conservar por separado un respaldo vigente de Supabase (base y originales) y de GBrain. La copia auxiliar **no es un respaldo completo** ni contiene archivos R2 antiguos de otros espacios. Los originales actuales siguen en Supabase. Confirmar descarga, tamaño y checksum mediante el importador, no a través de un chat o vista que pueda truncar textos.
+3. Para el cambio definitivo, esperar a que terminen los análisis y suspender las ediciones manualmente en el sitio anterior; descargar **una copia final nueva**. No activar ambos alojamientos a la vez: comparten Supabase, pero sus historias y cuotas auxiliares serían distintas. Las reservas pendientes se conservan y se informan en el resumen; no se ejecutan ni reanudan automáticamente durante la importación.
+4. Subir la copia por un canal privado al VPS, fuera del repositorio y de rutas públicas. Construir la imagen en un checkout dedicado, sin alterar carpetas de otros servicios: `docker build --target runner -t project-os:prepare .`. Todavía no iniciar la aplicación. Usar el mismo volumen nombrado que está configurado en Dokploy.
+5. Ejecutar el importador primero sin `--apply`. Valida versión, columnas exactas, checksum SHA-256, espacio, Supabase, tipos, límites y destino vacío. El checksum detecta corrupción, **no autentica al remitente**: usar únicamente la copia obtenida del sitio propio por HTTPS. La prueba no escribe el historial. Después de revisar los recuentos, repetir con `--apply`; la inserción es atómica. Una repetición idéntica no duplica registros, pero se rechaza otra copia o un destino que ya tenga actividad. No borrar ni sobrescribir un volumen para forzar una importación.
+
+Ejemplo en el VPS, **tras confirmar** la ubicación privada `/opt/project-os-transfer/project-os-history.json`, la imagen y el volumen específicos:
+
+```sh
+docker run --rm --network none \
+  --mount type=volume,source=project-os-data,target=/data \
+  --mount type=bind,source=/opt/project-os-transfer,target=/transfer,readonly \
+  --env PROJECT_OS_DATA_DIR=/data \
+  --env PROJECT_OS_WORKSPACE_ID=BacSiECnJK0jd3eP2gEDSd9XlM32FGQThAZiEpczNdpVn17Wt9TUg3 \
+  --env SUPABASE_URL=https://projects-duarcas.northbridge-finance.com \
+  --entrypoint node project-os:prepare \
+  scripts/import-auxiliary.mjs /transfer/project-os-history.json
+```
+
+Añadir `--apply` **al final** para la importación efectiva. No requiere credenciales de OpenAI, GBrain ni servicio de Supabase; el contenedor de importación no tiene red. En un host Node >=22.13 también puede ejecutarse `node scripts/import-auxiliary.mjs /ruta/privada/copia.json [--apply]` con esas tres variables de destino.
+
+La imagen Docker exige `PROJECT_OS_REQUIRE_AUXILIARY_IMPORT=true`: no inicia el servidor hasta que el volumen contenga el recibo de importación para este mismo espacio. No desactivar esta protección para eludir el traslado. Los límites actuales son 10.000 filas por tabla y 8 MiB de contenido auxiliar total (máximo 32 MiB del JSON). Si se exceden, la descarga falla expresamente y se debe preparar una transferencia por partes; **no entrega un respaldo truncado**.
+
+### Comprobaciones y cambio de alojamiento
+
+Tras autorización de despliegue, confirmar variables, volumen importado y DNS antes de pulsar Deploy. Verificar certificado HTTPS, salud del contenedor y ausencia de errores de permisos. Probar sin sesión: `/` y `/deployment` redirigen a `/login`; las API y documentos no devuelven contenido privado. Con el propietario: login/logout, proyectos/tareas existentes, descarga de una transcripción, análisis anteriores, vínculos de GBrain y búsqueda en contenido. Evitar llamadas de IA de pago durante estas comprobaciones.
+
+Reiniciar solo la aplicación nueva y confirmar que el historial sigue disponible. Respaldar el volumen completo con la aplicación detenida, incluyendo SQLite y WAL/SHM; no copiar solo el `.sqlite` mientras está escribiendo. Mantener el alojamiento anterior sin uso hasta validar el nuevo. No eliminarlo ni alternar escrituras entre ambos; si el VPS ya recibió actividad, cualquier vuelta atrás requiere conservar/reconciliar primero su historia auxiliar.
+
+Pruebas adicionales: `npm run test:transfer` y `npm run test:auth:http` (esta última requiere `npm run build:docker`). Usan datos ficticios, validan importación/exportación y protección HTTP, y no hacen llamadas reales de IA.
+
 ## Desarrollo y publicación
 
 - `node node_modules/typescript/bin/tsc --noEmit`: tipos.

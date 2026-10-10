@@ -49,3 +49,9 @@ next-env.d.ts
 /work/
 /.node-runtime/
 /data/
+# Private migration exports, wherever accidentally downloaded in the checkout.
+project-os-history*.json
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+/deploy/*.env

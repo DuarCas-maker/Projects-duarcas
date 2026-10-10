@@ -10,6 +10,7 @@ declare namespace Cloudflare {
     PROJECT_OS_OWNER_EMAIL?: string;
     PROJECT_OS_OWNER_ID?: string;
     PROJECT_OS_REQUIRE_EXISTING_WORKSPACE?: string;
+    PROJECT_OS_REQUIRE_AUXILIARY_IMPORT?: string;
     PROJECT_OS_BACKEND?: "d1" | "supabase";
     PROJECT_OS_WORKSPACE_ID?: string;
     OPENAI_API_KEY?: string;
