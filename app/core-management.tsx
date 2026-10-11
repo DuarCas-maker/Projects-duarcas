@@ -10,6 +10,8 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { PROJECT_STATUSES, PROJECT_TYPES, COMMERCIAL_STATUSES, TASK_STATUSES, MILESTONE_STATUSES } from "@/lib/core-commands";
 import type { Workspace } from "@/lib/workspace-types";
+import { taskMeeting } from "@/lib/task-timing";
+import { MeetingOriginField } from "./task-timing";
 
 export type SaveCore = (action: string, payload: Record<string, unknown>, commandId?: string) => Promise<string | null>;
 type Kind = "project" | "task" | "milestone" | "financial" | "payment";
@@ -32,12 +34,13 @@ export function CoreButton({ kind, state, save, row, projectId, title, saved }: 
   const edit = Boolean(row);
   const heading = kind === "project" ? edit ? "Editar proyecto" : "Nuevo proyecto" : kind === "task" ? edit ? "Editar tarea" : "Nueva tarea" : kind === "milestone" ? edit ? "Editar hito" : "Nuevo hito" : kind === "financial" ? "Condiciones de pago" : "Registrar pago";
   const launch = () => {
-    setValues(Object.fromEntries(Object.entries({ projectId: projectId ?? state.projects[0]?.id ?? "", shortCode: "", projectType: "Por alcance", operationalStatus: "Por iniciar", commercialStatus: "Sin definir", priority: 3, strategicPriority: 3, urgency: 3, estimatedMinutes: 30, position: state.milestones.filter((item) => item.projectId === projectId).length + 1, status: "pending", currency: "COP", totalValue: 0, paymentDate: today(), ...row }).map(([key, value]) => [key, value == null ? "" : String(value)])));
+    const originMeetingId = kind === "task" && row ? row.originMeetingId || taskMeeting(state, row as Workspace["tasks"][number])?.item.id || "" : "";
+    setValues(Object.fromEntries(Object.entries({ projectId: projectId ?? state.projects[0]?.id ?? "", shortCode: "", projectType: "Por alcance", operationalStatus: "Por iniciar", commercialStatus: "Sin definir", priority: 3, strategicPriority: 3, urgency: 3, estimatedMinutes: 30, position: state.milestones.filter((item) => item.projectId === projectId).length + 1, status: "pending", currency: "COP", totalValue: 0, paymentDate: today(), ...row, ...(kind === "task" ? { originMeetingId } : {}) }).map(([key, value]) => [key, value == null ? "" : String(value)])));
     setDependencies(state.dependencies.filter((edge) => edge.taskId === row?.id).map((edge) => edge.dependsOnTaskId));
     setCommandId(crypto.randomUUID()); setError(""); setOpen(true);
   };
   const set = (key: string, value: string) => setValues((current) => ({ ...current, [key]: value }));
-  const input = (key: string, label: string, type = "text", required = false, maxLength?: number) => <label><span>{label}</span><Input name={key} aria-label={label} type={type} value={values[key] ?? ""} onChange={(event) => set(key, event.target.value)} required={required} maxLength={maxLength} min={type === "number" ? kind === "payment" ? 1 : 0 : undefined} step={type === "number" ? 1 : undefined} /></label>;
+  const input = (key: string, label: string, type = "text", required = false, maxLength?: number) => <label><span>{label}</span><Input name={key} aria-label={label} type={type} value={values[key] ?? ""} onChange={(event) => set(key, event.target.value)} onInput={type === "date" ? event => set(key, event.currentTarget.value) : undefined} required={required} maxLength={maxLength} min={type === "number" ? kind === "payment" ? 1 : 0 : undefined} step={type === "number" ? 1 : undefined} /></label>;
   const area = (key: string, label: string) => <label><span>{label}</span><Textarea name={key} aria-label={label} value={values[key] ?? ""} maxLength={2000} onChange={(event) => set(key, event.target.value)} /></label>;
   const choice = (key: string, label: string, options: string[]) => <Choice label={label} value={values[key] ?? ""} set={(value) => set(key, value)} options={options.map((value) => ({ value, label: labels[value] ?? value }))} />;
   const rating = (key: string, label: string) => choice(key, label, ["1", "2", "3", "4", "5"]);
@@ -65,11 +68,16 @@ export function CoreButton({ kind, state, save, row, projectId, title, saved }: 
       {area("currentSummary", "Estado actual")}{area("nextStepSummary", "Siguiente acción")}{input("blockedReason", "Bloqueador del proyecto")}
     </>}
     {kind === "task" && <>
-      {!edit && <Choice label="Proyecto" value={values.projectId} options={state.projects.map((item) => ({ value: item.id, label: item.name }))} set={(value) => { set("projectId", value); set("milestoneId", "_none"); setDependencies([]); }} />}
+      {!edit && <Choice label="Proyecto" value={values.projectId} options={state.projects.map((item) => ({ value: item.id, label: item.name }))} set={(value) => { set("projectId", value); set("milestoneId", "_none"); set("originMeetingId", ""); setDependencies([]); }} />}
       {input("title", "Título de la tarea", "text", true, 180)}{area("description", "Descripción y criterios de aceptación")}
       <div className="core-form-row">{choice("status", "Estado de la tarea", TASK_STATUSES)}<Choice label="Hito" value={values.milestoneId} options={[{ value: "_none", label: "Sin hito" }, ...state.milestones.filter((item) => item.projectId === values.projectId).map((item) => ({ value: item.id, label: item.name }))]} set={(value) => set("milestoneId", value)} /></div>
       <div className="core-form-row">{rating("priority", "Prioridad de tarea (1–5)")}{rating("urgency", "Urgencia (1–5)")}</div>
-      <div className="core-form-row">{input("deadline", "Fecha límite", "date")}{input("estimatedMinutes", "Duración estimada (minutos)", "number", true)}</div>
+      <MeetingOriginField state={state} userId={state.projects.find(item => item.id === values.projectId)?.userId ?? ""} projectId={values.projectId} originalId={edit ? String(row?.originMeetingId || taskMeeting(state, row as Workspace["tasks"][number])?.item.id || "") : null} value={values.originMeetingId ?? ""} change={value => set("originMeetingId", value)} />
+      <div className="core-form-row">{input("tentativeDeliveryDate", "Entrega tentativa (opcional)", "date")}{input("estimatedMinutes", "Duración estimada (minutos)", "number", true)}</div>
+      {values.tentativeDeliveryDate && <Button type="button" variant="ghost" size="sm" onClick={() => set("tentativeDeliveryDate", "")}>Quitar entrega tentativa</Button>}
+      <p className="core-hint">La entrega tentativa es orientativa: no marca la tarea como vencida ni cambia su prioridad.</p>
+      {input("deadline", "Fecha límite confirmada (opcional)", "date")}
+      <p className="core-hint">La fecha límite confirmada sí genera alertas de vencimiento. Las fechas límite existentes se conservan.</p>
       {values.status === "blocked" && input("blockingReason", "Motivo del bloqueo")}
       <fieldset className="core-dependencies"><legend>Debe completarse después de</legend>{projectTasks.length ? projectTasks.map((task) => <label key={task.id}><Checkbox aria-label={`Depende de ${task.title}`} checked={dependencies.includes(task.id)} onCheckedChange={(checked) => setDependencies((current) => checked ? [...current, task.id] : current.filter((id) => id !== task.id))} /><span>{task.title}<small>{labels[task.status] ?? task.status}</small></span></label>) : <p>No hay otras tareas en este proyecto.</p>}</fieldset>
     </>}

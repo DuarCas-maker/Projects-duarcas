@@ -1,4 +1,5 @@
 import type { Workspace } from "./workspace-types";
+import { taskMeeting, projectMeetings } from "./task-timing";
 
 export const CORE_ACTIONS = new Set(["create_project", "update_project", "create_milestone", "update_milestone", "create_task", "update_task", "update_task_status", "update_financials", "record_payment"]);
 export const PROJECT_STATUSES = ["Por iniciar", "Activo", "Negociación", "Pausado", "Soporte", "Finalizado", "Cancelado", "Archivado"];
@@ -63,6 +64,10 @@ export function buildCoreCommand(state: Workspace, userId: string, action: strin
     projectId = project(previous?.projectId ?? payload.projectId).id; id = previous?.id ?? uuid();
     const value = { ...previous, ...payload };
     const milestoneId = text(value.milestoneId, 100) || null;
+    const originalMeetingId = previous ? previous.originMeetingId || taskMeeting(state, previous)?.item.id || null : null;
+    const requestedMeetingId = payload.originMeetingId === undefined ? originalMeetingId : text(payload.originMeetingId, 100) || null;
+    if (originalMeetingId && requestedMeetingId !== originalMeetingId) fail("Se conserva la reunión original en la que surgió la tarea.", 409);
+    if (requestedMeetingId && !projectMeetings(state, userId, projectId).some(entry => entry.item.id === requestedMeetingId)) fail("Selecciona una reunión de este proyecto.", 404);
     if (milestoneId && !state.milestones.some((item) => item.id === milestoneId && item.projectId === projectId)) fail("El hito no pertenece a este proyecto.");
     const status = choice(value.status, TASK_STATUSES, "pending");
     const currentEdges = state.dependencies.filter((edge) => edge.taskId === id);
@@ -75,14 +80,14 @@ export function buildCoreCommand(state: Workspace, userId: string, action: strin
     if (["in_progress", "review", "completed"].includes(status) && dependencyIds.some((parent) => task(parent).status !== "completed")) fail("Completa las tareas de las que depende antes de avanzar.", 409);
     if (milestoneId && !["completed", "cancelled"].includes(status) && state.milestones.find((item) => item.id === milestoneId)?.status === "completed") fail("Reabre el hito antes de añadir trabajo pendiente.", 409);
     const blockingReason = status === "blocked" ? text(value.blockingReason) || "Bloqueo manual" : null;
-    const row = { id, userId, projectId, milestoneId, parentTaskId: previous?.parentTaskId ?? null, title: required(value.title, "El título"), description: text(value.description), status, priority: integer(value.priority, 3, 1, 5), urgency: integer(value.urgency, 3, 1, 5), estimatedMinutes: integer(value.estimatedMinutes, 30, 1, 10080), deadline: date(value.deadline), scheduledStart: previous?.scheduledStart ?? null, scheduledEnd: previous?.scheduledEnd ?? null, isBlocked: status === "blocked", blockingReason, sourceType: previous?.sourceType ?? "manual", sourceId: previous?.sourceId ?? null, aiGenerated: previous?.aiGenerated ?? false, approved: previous?.approved ?? true, completedAt: status === "completed" ? previous?.completedAt ?? now : null, createdAt: previous?.createdAt ?? now, updatedAt: now };
+    const row = { id, userId, projectId, milestoneId, parentTaskId: previous?.parentTaskId ?? null, title: required(value.title, "El título"), description: text(value.description), status, priority: integer(value.priority, 3, 1, 5), urgency: integer(value.urgency, 3, 1, 5), estimatedMinutes: integer(value.estimatedMinutes, 30, 1, 10080), deadline: date(value.deadline), tentativeDeliveryDate: date(value.tentativeDeliveryDate), originMeetingId: requestedMeetingId, scheduledStart: previous?.scheduledStart ?? null, scheduledEnd: previous?.scheduledEnd ?? null, isBlocked: status === "blocked", blockingReason, sourceType: previous?.sourceType ?? "manual", sourceId: previous?.sourceId ?? null, aiGenerated: previous?.aiGenerated ?? false, approved: previous?.approved ?? true, completedAt: status === "completed" ? previous?.completedAt ?? now : null, createdAt: previous?.createdAt ?? now, updatedAt: now };
     save("tasks", row, previous);
     if (payload.dependsOnTaskIds !== undefined) {
       for (const edge of currentEdges) changes.push({ table: "task_dependencies", kind: "delete", row: { id: edge.id, user_id: userId }, expected: databaseRow(edge) });
       for (const parent of dependencyIds) save("task_dependencies", { id: uuid(), userId, taskId: id, dependsOnTaskId: parent, dependencyType: "finish_to_start" });
     }
     eventType = "task"; title = previous ? "Tarea actualizada" : "Tarea creada";
-    description = previous ? `${row.title}. ${describeChanges(previous, row, { title: "Título", description: "Descripción", status: "Estado", priority: "Prioridad", urgency: "Urgencia", estimatedMinutes: "Minutos", deadline: "Fecha límite", milestoneId: "Hito", blockingReason: "Bloqueo" })}` : `${row.title} · ${status}`;
+    description = previous ? `${row.title}. ${describeChanges(previous, row, { title: "Título", description: "Descripción", status: "Estado", priority: "Prioridad", urgency: "Urgencia", estimatedMinutes: "Minutos", deadline: "Fecha límite", tentativeDeliveryDate: "Entrega tentativa", originMeetingId: "Reunión de origen", milestoneId: "Hito", blockingReason: "Bloqueo" })}` : `${row.title} · ${status}${row.tentativeDeliveryDate ? ` · Entrega tentativa: ${row.tentativeDeliveryDate}` : ""}`;
     if (payload.dependsOnTaskIds !== undefined) description += `. Dependencias: ${dependencyIds.map((parent) => task(parent).title).join(", ") || "ninguna"}`;
   } else if (action === "update_financials" || action === "record_payment") {
     projectId = project(payload.projectId).id;

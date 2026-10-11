@@ -140,6 +140,11 @@ button { cursor: pointer; }
 .task-meta { display: grid; justify-items: end; gap: .35rem; color: var(--muted-copy); font-size: .69rem; }
 .task-meta span { display: flex; align-items: center; gap: .3rem; }
 .task-meta .due-now { color: var(--brand-wine); font-weight: 750; }
+.task-timing { display: flex; flex-wrap: wrap; gap: .35rem 1rem; margin-top: .5rem; font-size: .75rem; color: var(--muted-copy); line-height: 1.5; }
+.task-timing > span { display: inline-flex; flex-wrap: wrap; align-items: center; gap: .25rem; }
+.task-timing svg { flex-shrink: 0; color: var(--brand-purple); }
+.task-timing .task-tentative { color: var(--brand-purple); }
+.task-row:has(.task-timing) { padding-block: .8rem; }
 .task-play { display: grid; place-items: center; width: 2rem; height: 2rem; border: 0; border-radius: 50%; background: var(--brand-wine); color: var(--brand-white); opacity: 0; transform: translateX(4px); transition: .2s ease; }
 .task-row:hover .task-play, .task-play:focus-visible { opacity: 1; transform: none; }
 .status-pill { display: inline-flex; align-items: center; width: fit-content; padding: .16rem .42rem; border-radius: 999px; background: var(--soft); color: var(--muted-copy); font-size: .58rem; font-weight: 780; letter-spacing: .03em; white-space: nowrap; }

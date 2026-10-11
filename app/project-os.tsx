@@ -20,6 +20,7 @@ import { RepositoryPanel, fetchGithubContext } from "./repository-panel";
 import type { SearchResult, SearchTab } from "@/lib/global-search";
 import { ApprovalsPanel, CalendarPlanning, InboxTriage } from "./daily-os";
 import { eligibleTasks, rankTask } from "@/lib/daily-engine";
+import { TaskTimingLine } from "./task-timing";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -64,8 +65,8 @@ function TaskRow({ task, state, rank, onStatus, saveCore }: { task: Task; state:
   const project = projectFor(state, task.projectId);
   return <article className={`task-row ${task.isBlocked ? "is-blocked" : ""}`}>
     {rank ? <div className="task-rank">{String(rank).padStart(2, "0")}</div> : <button className="task-check" aria-label="Marcar como completada" onClick={() => onStatus(task.id, task.status === "completed" ? "pending" : "completed")}>{task.status === "completed" && <Check size={15} />}</button>}
-    <div className="task-main"><div className="task-topline"><span className={`project-dot ${accentClass[project?.accent ?? "gray"]}`} /><strong>{project?.name}</strong><StatusPill status={task.status} /></div><h3>{task.title}</h3><p>{task.isBlocked ? task.blockingReason : `Prioridad ${task.priority}/5 · ${whyTask(task, project)}`}</p></div>
-    <div className="task-meta"><span><Clock3 size={14} />{minutesLabel(task.estimatedMinutes)}</span>{task.deadline && <span className={task.deadline <= todayKey() ? "due-now" : ""}>{task.deadline === todayKey() ? "Hoy" : task.deadline.slice(5).split("-").reverse().join("/")}</span>}</div>
+    <div className="task-main"><div className="task-topline"><span className={`project-dot ${accentClass[project?.accent ?? "gray"]}`} /><strong>{project?.name}</strong><StatusPill status={task.status} /></div><h3>{task.title}</h3><p>{task.isBlocked ? task.blockingReason : `Prioridad ${task.priority}/5 · ${whyTask(task, project)}`}</p><TaskTimingLine state={state} task={task} /></div>
+    <div className="task-meta"><span><Clock3 size={14} />{minutesLabel(task.estimatedMinutes)}</span>{task.deadline && <span title={`Fecha límite confirmada: ${task.deadline}`} className={task.deadline <= todayKey() && !["completed", "cancelled"].includes(task.status) ? "due-now" : ""}>Límite: {task.deadline === todayKey() ? "Hoy" : task.deadline.slice(5).split("-").reverse().join("/")}</span>}</div>
     {!task.isBlocked && task.status !== "completed" && <button className="task-play" aria-label="Iniciar tarea" onClick={() => onStatus(task.id, "in_progress")}><Play size={16} fill="currentColor" /></button>}
     {saveCore && <CoreButton kind="task" state={state} row={task} save={saveCore} title="Editar tarea" />}
   </article>;

@@ -3,15 +3,21 @@ import { readFile } from "node:fs/promises";
 import vm from "node:vm";
 import ts from "typescript";
 
+const context = vm.createContext({ crypto, Intl, Date });
+const modules = new Map();
 async function sourceModule(file) {
+  if (modules.has(file)) return modules.get(file);
   const source = await readFile(new URL(file, import.meta.url), "utf8");
   const { outputText } = ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } });
-  const module = new vm.SourceTextModule(outputText, { context: vm.createContext({ crypto, Intl, Date }) });
-  await module.link(() => { throw new Error("Unexpected runtime dependency"); });
-  await module.evaluate(); return module.namespace;
+  const module = new vm.SourceTextModule(outputText, { context });
+  modules.set(file, module);
+  await module.link(specifier => sourceModule(`../lib/${specifier.split("/").at(-1)}.ts`));
+  return module;
 }
-const { buildCoreCommand, CoreValidationError } = await sourceModule("../lib/core-commands.ts");
-const { emptyWorkspace, deriveWorkspaceState } = await sourceModule("../lib/workspace-types.ts");
+const coreModule = await sourceModule("../lib/core-commands.ts"), typesModule = await sourceModule("../lib/workspace-types.ts");
+await coreModule.evaluate(); await typesModule.evaluate();
+const { buildCoreCommand, CoreValidationError } = coreModule.namespace;
+const { emptyWorkspace, deriveWorkspaceState } = typesModule.namespace;
 let state = emptyWorkspace();
 const userId = `core-check-${crypto.randomUUID()}`;
 const plans = [];

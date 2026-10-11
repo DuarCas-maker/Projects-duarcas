@@ -10,7 +10,7 @@ function text(value: unknown, max = 2000) { if (typeof value !== "string") retur
 function required(value: unknown, label: string, max = 180) { return text(value, max) || fail(`${label} es obligatorio.`); }
 function date(value: unknown) { const result = text(value, 10); if (!/^\d{4}-\d{2}-\d{2}$/.test(result) || !Number.isFinite(Date.parse(`${result}T12:00:00Z`)) || new Date(`${result}T12:00:00Z`).toISOString().slice(0, 10) !== result) fail("La fecha no es válida."); return result; }
 function time(value: unknown) { const result = text(value, 5); return /^([01]\d|2[0-3]):[0-5]\d$/.test(result) ? result : fail("El horario no es válido."); }
-function taskData(value: Row) { return { title: required(value.title, "El título"), description: text(value.description), priority: value.priority ?? 3, urgency: value.urgency ?? 3, estimatedMinutes: value.estimatedMinutes ?? 30, deadline: value.deadline || null }; }
+function taskData(value: Row) { return { title: required(value.title, "El título"), description: text(value.description), priority: value.priority ?? 3, urgency: value.urgency ?? 3, estimatedMinutes: value.estimatedMinutes ?? 30, deadline: value.deadline || null, tentativeDeliveryDate: value.tentativeDeliveryDate ? date(value.tentativeDeliveryDate) : null }; }
 
 export function buildDailyCommand(state: Workspace, userId: string, action: string, payload: Row, commandId: string, now = new Date().toISOString(), uuid = () => crypto.randomUUID()) {
   let changes: CoreChange[] = []; let id = ""; let projectId = "";
@@ -71,7 +71,7 @@ export function buildDailyCommand(state: Workspace, userId: string, action: stri
         if (previous.suggestionType !== "new_task") fail("Esta propuesta antigua necesita completarse. Usa Editar para definir la acción o recházala.", 409);
         const data = taskData({ title: previous.title, ...((stored.data as Row) ?? {}) });
         if(fromMeeting && existingMeetingTask(state,projectId,data.title)) fail("Ya existe una tarea similar. Revisa la existente o rechaza esta propuesta.",409);
-        const command = buildCoreCommand(state, userId, "create_task", { ...data, projectId }, commandId, now, uuid);
+        const command = buildCoreCommand(state, userId, "create_task", { ...data, projectId, ...(fromMeeting ? { originMeetingId: stored.meetingId } : {}) }, commandId, now, uuid);
         changes = command.changes;
         const task = changes.find((change) => change.table === "tasks")!;
         task.row.source_type = "suggestion"; task.row.source_id = previous.id; task.row.ai_generated = stored.source === "openai";
