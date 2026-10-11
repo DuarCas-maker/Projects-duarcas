@@ -1,4 +1,4 @@
-import { MeetingEvidenceError } from "./meeting-analysis";
+import { MAX_MEETING_FINDINGS, MAX_MEETING_TASKS, MeetingEvidenceError } from "./meeting-analysis";
 
 export type MeetingPassage={id:string;text:string};
 // Every character remains in order, including Markdown, CRLF and Unicode.
@@ -22,11 +22,20 @@ export function meetingPassages(text:string):MeetingPassage[] {
 export function citablePassages(passages:MeetingPassage[]){return passages.filter(passage=>passage.text.trim().length>=8);}
 export function resolveMeetingEvidence(value:unknown,passages:MeetingPassage[]) {
   const row=value as {summary:unknown;findings:Record<string,unknown>[]};
-  if(!row||typeof row!=="object"||Array.isArray(row)||!Array.isArray(row.findings)||row.findings.length>8)throw new MeetingEvidenceError("shape");
+  if(!row||typeof row!=="object"||Array.isArray(row)||!Array.isArray(row.findings)||row.findings.length>MAX_MEETING_FINDINGS)throw new MeetingEvidenceError("shape");
   const byId=new Map(citablePassages(passages).map(passage=>[passage.id,passage.text.trim()]));
   return {summary:row.summary,findings:row.findings.map(finding=>{
     if(!finding||typeof finding!=="object"||Array.isArray(finding)||typeof finding.evidenceId!=="string"||!byId.has(finding.evidenceId))throw new MeetingEvidenceError("evidence_id");
     const {evidenceId:_id,quote:_untrustedQuote,...fields}=finding;
     return {...fields,quote:byId.get(finding.evidenceId)!};
   })};
+}
+// The provider bounds tasks separately. Persist the same flat findings used by
+// existing saved parts, proposal IDs and approvals, without dropping any items.
+export function resolveMeetingAnalysisResponse(value:unknown,passages:MeetingPassage[]) {
+  const row=value as {summary:unknown;findings:Record<string,unknown>[];tasks:Record<string,unknown>[]};
+  if(!row||typeof row!=="object"||Array.isArray(row)||!Array.isArray(row.findings)||!Array.isArray(row.tasks)||row.findings.length>MAX_MEETING_FINDINGS-MAX_MEETING_TASKS)throw new MeetingEvidenceError("shape");
+  if(row.tasks.length>MAX_MEETING_TASKS)throw new MeetingEvidenceError("task_count");
+  if(row.findings.some(finding=>!finding||finding.kind==="task")||row.tasks.some(finding=>!finding||finding.kind!=="task"))throw new MeetingEvidenceError("finding_shape");
+  return resolveMeetingEvidence({summary:row.summary,findings:[...row.findings,...row.tasks]},passages);
 }

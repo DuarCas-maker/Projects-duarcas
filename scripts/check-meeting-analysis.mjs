@@ -12,8 +12,8 @@ const DB={prepare(query){const statement=sql.prepare(query);return {bind(...args
 let requests=0,providerBody,providerStatus=200,providerResult;
 const context=vm.createContext({crypto,Intl,Date,TextEncoder,TextDecoder,Uint8Array,URL,AbortSignal,Response,console,fixtureEnv:{DB,OPENAI_API_KEY:"synthetic-test-credential",PROJECT_OS_AI_CONTEXT_ENABLED:"true"},async fetch(_url,options){requests++;providerBody=JSON.parse(options.body);return Response.json(providerResult,{status:providerStatus});}});
 const compiled=await build({stdin:{contents:'export * from "../lib/meeting-analysis"; export * from "../lib/meeting-evidence"; export * from "../lib/meeting-proposals"; export * from "../lib/daily-commands"; export * from "../lib/core-commands"; export * from "../lib/workspace-types"; export * from "../lib/meetings"; export * from "../db/meeting-analysis"; export * from "../db/ai-history"; export * from "../lib/meeting-ai-provider";',resolveDir:fileURLToPath(new URL(".",import.meta.url))},bundle:true,format:"esm",platform:"node",write:false,plugins:[{name:"test-env",setup(build){build.onResolve({filter:/^cloudflare:workers$/},()=>({path:"env",namespace:"fixture"}));build.onLoad({filter:/.*/,namespace:"fixture"},()=>({contents:"export const env=globalThis.fixtureEnv;",loader:"js"}));}}]});
-const module=new vm.SourceTextModule(compiled.outputFiles[0].text,{context});await module.link(()=>{});await module.evaluate();
-const {meetingPassages,citablePassages,resolveMeetingEvidence,validateMeetingPart,combineMeetingParts,meetingProposalId,buildMeetingProposal,buildCoreCommand,buildDailyCommand,emptyWorkspace,deriveWorkspaceState,MEETING_PREFIX,meetingQueryPrefix,reserveMeetingPart,finishAiRun,meetingParts,requestMeetingAnalysis,bogotaDay}=module.namespace;
+const analysisModule=new vm.SourceTextModule(compiled.outputFiles[0].text,{context});await analysisModule.link(()=>{});await analysisModule.evaluate();
+const {meetingPassages,citablePassages,resolveMeetingEvidence,resolveMeetingAnalysisResponse,validateMeetingPart,combineMeetingParts,meetingProposalId,buildMeetingProposal,buildCoreCommand,buildDailyCommand,emptyWorkspace,deriveWorkspaceState,MEETING_PREFIX,meetingQueryPrefix,reserveMeetingPart,finishAiRun,meetingParts,requestMeetingAnalysis}=analysisModule.namespace;
 const text="Ana: Decidimos usar material zafiro. Luis: Preparar el informe de muestra el 15 de octubre de 2026.";
 const finding={kind:"decision",title:"Usar material zafiro",description:"Acuerdo ficticio para la demostración",quote:"Decidimos usar material zafiro.",date:null,confidence:90,priority:3,urgency:3,estimatedMinutes:30};
 const valid=validateMeetingPart({summary:"Resumen ficticio",findings:[finding]},text,0);
@@ -23,12 +23,29 @@ const selected=passages[3],resolved=resolveMeetingEvidence({summary:"Resumen",fi
 assert.throws(()=>resolveMeetingEvidence({summary:"Resumen",findings:[{...finding,evidenceId:"e9999"}]},passages));assert.throws(()=>resolveMeetingEvidence({summary:"Resumen",findings:[finding]},passages));
 for(const bad of [{quote:"Cita inventada de reunión"},{kind:"toString"},{date:"2026-02-30"},{confidence:101},{priority:0},{estimatedMinutes:900}])assert.throws(()=>validateMeetingPart({summary:"Resumen",findings:[{...finding,...bad}]},text,0));
 assert.throws(()=>validateMeetingPart({summary:"Resumen",findings:Array(4).fill({...finding,kind:"task"})},text,0));
+// Reproduce the original failure with four schema-valid tasks, then exercise
+// the separately bounded provider lists at their maximum without losing items.
+const cited={...finding,evidenceId:"e0001"},citedTask={...cited,kind:"task"};
+assert.throws(()=>validateMeetingPart(resolveMeetingEvidence({summary:"Resumen",findings:Array(4).fill(citedTask)},meetingPassages(text)),text,1),error=>error.code==="task_count"&&error.message.includes("más de tres tareas"));
+const split=resolveMeetingAnalysisResponse({summary:"Resumen",findings:Array(5).fill(cited),tasks:Array(3).fill(citedTask)},meetingPassages(text));
+const splitValidated=validateMeetingPart(split,text,1);assert.equal(splitValidated.findings.length,8);assert.equal(splitValidated.findings.filter(finding=>finding.kind==="task").length,3);
+assert.ok(splitValidated.findings.every(finding=>finding.quote===text&&finding.part===1));
+for(const invalid of [
+  {summary:"Resumen",findings:[],tasks:Array(4).fill(citedTask)},
+  {summary:"Resumen",findings:Array(6).fill(cited),tasks:[]},
+  {summary:"Resumen",findings:[citedTask],tasks:[]},
+  {summary:"Resumen",findings:[],tasks:[cited]},
+  {summary:"Resumen",findings:[]},
+])assert.throws(()=>resolveMeetingAnalysisResponse(invalid,meetingPassages(text)));
 const fingerprint="a".repeat(64),hash="b".repeat(64),meetingId=crypto.randomUUID();
 const part={version:1,meetingId,fingerprint,contentHash:hash,part:0,totalParts:2,...valid};
 const second={...part,part:1,summary:"Último fragmento",findings:[{...valid.findings[0],id:"1:0",part:1}]};
 assert.equal(combineMeetingParts([part]).status,"partial");assert.equal(combineMeetingParts([part]).findings.length,0);
 assert.equal(combineMeetingParts([second,part]).status,"ready");assert.equal(combineMeetingParts([part,second]).findings.length,1);
 assert.equal(combineMeetingParts([second]).completedParts,0);assert.throws(()=>combineMeetingParts([part,{...second,contentHash:"different"}]));
+const legacy={...part,totalParts:3},continued={...legacy,part:1,...splitValidated};
+assert.equal(combineMeetingParts([legacy,continued]).completedParts,2);assert.equal(combineMeetingParts([legacy,continued]).status,"partial");
+assert.equal(combineMeetingParts([legacy,continued,{...legacy,part:2,findings:[]}]).status,"ready");
 assert.equal(await meetingProposalId(meetingId,fingerprint,valid.findings[0]),await meetingProposalId(meetingId,fingerprint,{...valid.findings[0],title:"USAR material záfiro!"}));
 
 let state=emptyWorkspace();const userId="meeting-fixture-user";
@@ -56,8 +73,16 @@ await finishAiRun(userId,runId,part);assert.equal((await meetingParts(userId,pro
 await assert.rejects(()=>reserveMeetingPart(userId,crypto.randomUUID(),projectId,prefix+"0"));
 for(const index of [1,2])await reserveMeetingPart(userId,crypto.randomUUID(),projectId,prefix+index);
 await assert.rejects(()=>reserveMeetingPart(userId,crypto.randomUUID(),projectId,prefix+"3"));
-const completed={status:"completed",output:[{content:[{type:"output_text",text:JSON.stringify({summary:"Resumen",findings:[{...finding,evidenceId:"e0001"}]})}]}],usage:{input_tokens:100,output_tokens:40}};
+const completed={status:"completed",output:[{content:[{type:"output_text",text:JSON.stringify({summary:"Resumen",findings:[{...finding,evidenceId:"e0001"}],tasks:[]})}]}],usage:{input_tokens:100,output_tokens:40}};
 providerResult=completed;const grounded=await requestMeetingAnalysis(text,{title:"Reunión ficticia",date:"2026-10-08",project:"Prueba",part:1,totalParts:1,existingTasks:[]});assert.equal(providerBody.store,false);assert.equal(providerBody.text.format.strict,true);assert.equal(grounded.result.findings[0].quote,text);assert.equal(providerBody.text.format.schema.properties.findings.items.properties.quote,undefined);assert.equal(providerBody.text.format.schema.properties.findings.items.properties.evidenceId.enum[0],"e0001");assert.equal(JSON.parse(providerBody.input[0].content).passages.map(passage=>passage.text).join(""),text);
+const schema=providerBody.text.format.schema;
+assert.equal(schema.properties.tasks.maxItems,3);assert.deepEqual(Array.from(schema.properties.tasks.items.properties.kind.enum),["task"]);
+assert.equal(schema.properties.findings.maxItems,5);assert.ok(!schema.properties.findings.items.properties.kind.enum.includes("task"));
+assert.ok(schema.required.includes("tasks"));
+providerResult={...completed,output:[{content:[{type:"output_text",text:JSON.stringify({summary:"Resumen",findings:Array(5).fill(cited),tasks:Array(3).fill(citedTask)})}]}]};
+const bounded=await requestMeetingAnalysis(text,{title:"Ficticia",date:"2026-10-08",project:"Prueba",part:2,totalParts:3,existingTasks:[]});assert.equal(validateMeetingPart(bounded.result,text,1).findings.length,8);
+providerResult={...completed,output:[{content:[{type:"output_text",text:JSON.stringify({summary:"Resumen",findings:[],tasks:Array(4).fill(citedTask)})}]}]};
+await assert.rejects(()=>requestMeetingAnalysis(text,{title:"Ficticia",date:"2026-10-08",project:"Prueba",part:2,totalParts:3,existingTasks:[]}),error=>error.status===502&&error.message.includes("más de tres tareas"));
 providerResult={...completed,status:"incomplete"};await assert.rejects(()=>requestMeetingAnalysis(text,{title:"Ficticia",date:"2026-10-08",project:"Prueba",part:1,totalParts:1,existingTasks:[]}));
 providerResult={status:"completed",output:[{content:[{type:"refusal"}]}]};await assert.rejects(()=>requestMeetingAnalysis(text,{title:"Ficticia",date:"2026-10-08",project:"Prueba",part:1,totalParts:1,existingTasks:[]}));
 providerStatus=429;await assert.rejects(()=>requestMeetingAnalysis(text,{title:"Ficticia",date:"2026-10-08",project:"Prueba",part:1,totalParts:1,existingTasks:[]}));
