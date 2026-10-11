@@ -20,11 +20,11 @@ import {
   NOW_ISO,
 } from "@/lib/demo-data";
 
-export async function ensureWorkspace(userId: string) {
+export async function ensureWorkspace(userId: string, claimLegacy = true) {
   const db = getDb();
   // Older releases could bootstrap the personal workspace under this reserved
   // development identity. Only the server-configured workspace may claim it.
-  if (userId !== "local-owner" && await canClaimLegacyWorkspace(userId)) {
+  if (claimLegacy && userId !== "local-owner" && await canClaimLegacyWorkspace(userId)) {
     const legacy = await db.select({ id: schema.projects.id }).from(schema.projects).where(eq(schema.projects.userId, "local-owner")).limit(1);
     if (legacy.length && env.DB) {
       const tables = ["projects", "milestones", "tasks", "task_dependencies", "task_evidence", "project_financials", "project_events", "ai_suggestions", "inbox_items", "calendar_blocks", "knowledge_items", "repositories"];
@@ -50,9 +50,9 @@ export async function ensureWorkspace(userId: string) {
   return db;
 }
 
-export async function getD1WorkspaceState(userId: string) {
-  const db = await ensureWorkspace(userId);
-  const [projects, milestones, tasks, dependencies, financials, events, suggestions, inbox, calendar, knowledge, repositories] = await Promise.all([
+export async function getD1WorkspaceState(userId: string, claimLegacy = true) {
+  const db = await ensureWorkspace(userId, claimLegacy);
+  const [projects, milestones, tasks, dependencies, financials, events, suggestions, inbox, calendar, knowledge, repositories, operations] = await Promise.all([
     db.select().from(schema.projects).where(eq(schema.projects.userId, userId)).orderBy(desc(schema.projects.priority)),
     db.select().from(schema.milestones).where(eq(schema.milestones.userId, userId)),
     db.select().from(schema.tasks).where(eq(schema.tasks.userId, userId)).orderBy(desc(schema.tasks.priority)),
@@ -64,8 +64,9 @@ export async function getD1WorkspaceState(userId: string) {
     db.select().from(schema.calendarBlocks).where(eq(schema.calendarBlocks.userId, userId)).orderBy(schema.calendarBlocks.startsAt),
     db.select().from(schema.knowledgeItems).where(eq(schema.knowledgeItems.userId, userId)).orderBy(desc(schema.knowledgeItems.occurredAt)),
     db.select().from(schema.repositories).where(eq(schema.repositories.userId, userId)),
+    db.select().from(schema.projectOperations).where(eq(schema.projectOperations.userId, userId)),
   ]);
-  return { projects, milestones, tasks, dependencies, financials, events, suggestions, inbox, calendar, knowledge, repositories };
+  return { projects, milestones, tasks, dependencies, financials, events, suggestions, inbox, calendar, knowledge, repositories, operations };
 }
 
 export async function ensureWorkspaceBackend(userId: string) {
@@ -80,8 +81,8 @@ export async function ensureWorkspaceBackend(userId: string) {
   });
 }
 
-export async function getWorkspaceState(userId: string) {
-  if (!isSupabaseConfigured()) return deriveWorkspaceState(await getD1WorkspaceState(userId));
+export async function getWorkspaceState(userId: string, claimLegacy = true) {
+  if (!isSupabaseConfigured()) return deriveWorkspaceState(await getD1WorkspaceState(userId, claimLegacy));
   await ensureWorkspaceBackend(userId);
   return deriveWorkspaceState(await getSupabaseWorkspaceState(userId));
 }

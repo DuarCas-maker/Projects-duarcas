@@ -6,6 +6,7 @@ import { readMeeting } from "./meetings";
 import { FINDING_LABELS, type MeetingAnalysis } from "./meeting-analysis";
 import { buildCoreCommand, CoreValidationError } from "./core-commands";
 import { repositoryFollowup, projectRepositorySources, type RepositoryFollowup, type RepositoryFollowupInput } from "./github-context";
+import { operationsFor, assignmentLabel, financeTotals, detailFor } from "./project-operations";
 
 export type UpdateClaim = { text: string; sourceIds: string[] };
 export type ProjectUpdateResult = {
@@ -41,6 +42,7 @@ export function projectUpdateSignature(state: Workspace, projectId: string, meet
     suggestions: sort(state.suggestions.filter(s => s.projectId === projectId)),
     knowledge: sort(activeKnowledge(state).filter(k => k.projectId === projectId)),
     repositories: sort(state.repositories.filter(r => r.projectId === projectId)),
+    operations: (state.operations ?? []).filter(o => o.projectId === projectId),
   });
 }
 
@@ -91,7 +93,8 @@ export function projectUpdateContext(state: Workspace, snapshot: ProjectUpdateSn
   const scopedMemory = memory.hits.filter(h => h.projectId === project.id && (!h.knowledgeId || !state.knowledge.some(k=>k.id===h.knowledgeId && k.itemType==="repository") || activeIds.has(h.knowledgeId)));
   // Put ranked tasks and independently bounded repository excerpts early so
   // large meeting/history records cannot crowd out the whole technical view.
-  for (const candidate of snapshot.candidates) {const task=state.tasks.find(t=>t.id===candidate.id)!;if(!records.some(r=>r.id===task.id)){const {userId:_,...row}=task;add(task.id,"task",{...row,ranking:rankTask(task,state)});}}
+  const taskContext = (task: Workspace["tasks"][number]) => { const { userId: _, ...row } = task, operations = operationsFor(state, project.id), detail = detailFor(operations, task.id); return { ...row, assignment: assignmentLabel(operations, task.id), plannedStart: detail.plannedStart, plannedEnd: detail.plannedEnd, ranking: rankTask(task, state) }; };
+  for (const candidate of snapshot.candidates) {const task=state.tasks.find(t=>t.id===candidate.id)!;if(!records.some(r=>r.id===task.id)) add(task.id,"task",taskContext(task));}
   for (const repo of repos) {
     const original = repositoryContext.find(r=>r.knowledgeId===repo.knowledgeId);
     add(repo.knowledgeId ?? repo.id,"github_snapshot_NOT_operational_completion",{...repo,text:original?.text ?? "",excerpt:original?.excerpt ?? false,originalUnavailable:!!repo.knowledgeId && (!original || original.unavailable),notLive:true});
@@ -103,9 +106,11 @@ export function projectUpdateContext(state: Workspace, snapshot: ProjectUpdateSn
   scopedMemory.forEach(row => add(row.id,"gbrain_retrieved_excerpt_NOT_entire_memory",row));
   snapshot.pending.forEach(row => add(row.id,"pending_NOT_applied",row));
   const tasks = state.tasks.filter(t => t.projectId === project.id).sort((a,b) => rankTask(b,state).score-rankTask(a,state).score);
-  for (const task of tasks) if (!records.some(r => r.id === task.id)) {const {userId:_,...row}=task;add(task.id,"task",{...row,ranking:rankTask(task,state)});}
+  for (const task of tasks) if (!records.some(r => r.id === task.id)) add(task.id,"task",taskContext(task));
   state.milestones.filter(m => m.projectId === project.id).forEach(({userId:_,...row}) => add(row.id,"milestone",row));
-  state.financials.filter(f => f.projectId === project.id).forEach(({userId:_,...row}) => add(row.id,"financial",row));
+  state.financials.filter(f => f.projectId === project.id && !operationsFor(state, project.id).agreements.some(a => a.legacy)).forEach(({userId:_,...row}) => add(row.id,"legacy_financial",row));
+  financeTotals(state, project.id).forEach(row => add("finance_" + project.id + "_" + row.currency, "financial", row));
+  operationsFor(state, project.id).people.filter(p => p.active).forEach(p => add(p.id, "person", { name: p.name, role: p.role }));
   state.events.filter(e => e.projectId === project.id && !records.some(r => r.id === e.id)).sort((a,b) => b.createdAt.localeCompare(a.createdAt)).slice(0,20).forEach(({userId:_,...row}) => add(row.id,"history",row));
   // Complete records only, with visible coverage limits. Never silently cut a
   // transcript or turn a model finding into a confirmed project status.

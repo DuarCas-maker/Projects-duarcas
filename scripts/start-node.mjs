@@ -25,7 +25,8 @@ try {
   } else throw new Error("Unknown workspace initialization mode");
 } finally { sql.close(); }
 const root = fileURLToPath(new URL("../", import.meta.url));
-const server = existsSync(join(root, "server.js")) ? join(root, "server.js") : join(root, ".next-node/standalone/server.js");
+const dist = process.env.PROJECT_OS_NODE_DIST_DIR === ".next-node-qa" ? ".next-node-qa" : ".next-node";
+const server = existsSync(join(root, "server.js")) ? join(root, "server.js") : join(root, dist, "standalone/server.js");
 if (!existsSync(server)) throw new Error("Build with npm run build:docker first");
 const child = spawn(process.execPath, [server], { stdio: "inherit", env: process.env });
 for (const signal of ["SIGTERM", "SIGINT"]) process.on(signal, () => child.kill(signal));

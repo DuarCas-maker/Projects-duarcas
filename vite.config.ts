@@ -43,6 +43,7 @@ export default defineConfig(async ({ command }) => {
   const localEnv = command === "serve" ? loadEnv("development", process.cwd(), "") : {};
   const aiVars = Object.fromEntries(["OPENAI_API_KEY", "OPENAI_MODEL", "PROJECT_OS_AI_DAILY_LIMIT", "PROJECT_OS_AI_CONTEXT_ENABLED", "GBRAIN_URL", "GBRAIN_SOURCE_ID", "GBRAIN_CLIENT_ID", "GBRAIN_CLIENT_SECRET", "PROJECT_OS_BRAIN_ENABLED", "PROJECT_OS_BRAIN_DAILY_LIMIT"].filter((key) => localEnv[key]).map((key) => [key, localEnv[key]]));
   const authVars = Object.fromEntries(["SUPABASE_URL", "SUPABASE_PUBLISHABLE_KEY", "SUPABASE_ANON_KEY", "PROJECT_OS_APP_URL", "PROJECT_OS_OWNER_EMAIL", "PROJECT_OS_OWNER_ID"].filter(key => localEnv[key]).map(key => [key, localEnv[key]]));
+  const githubVars = Object.fromEntries(["GITHUB_APP_ID", "GITHUB_APP_SLUG", "GITHUB_APP_PRIVATE_KEY", "GITHUB_ALLOWED_ACCOUNTS"].filter(key => localEnv[key]).map(key => [key, localEnv[key]]));
   // Use Miniflare's local Request.cf placeholder unless fetching is requested.
   process.env.CLOUDFLARE_CF_FETCH_ENABLED ??= "false";
   process.env.WRANGLER_SEND_METRICS ??= "false";
@@ -81,7 +82,7 @@ export default defineConfig(async ({ command }) => {
           ...localBindingConfig,
           ...(command === "serve"
             ? {
-                vars: { ...aiVars, ...authVars },
+                vars: { ...aiVars, ...authVars, ...githubVars },
                 services: [
                   {
                     binding: "CONNECTORS",

@@ -9,7 +9,7 @@ export function buildMeetingProposal(state:Workspace,userId:string,meetingId:str
   if(!item||!meeting) throw new CoreValidationError("Reunión no encontrada.",404);
   if(finding.kind==="task" && existingMeetingTask(state,item.projectId,finding.title)) throw new CoreValidationError("Ya existe una tarea similar. Revisa la tarea actual antes de crear otra.",409);
   const evidence=`Reunión: ${item.title} · ${meeting.date} · fragmento ${finding.part+1}\nCita verificada: «${finding.quote}»`;
-  const data={title:finding.title,description:finding.description,priority:finding.priority,urgency:finding.urgency,estimatedMinutes:finding.estimatedMinutes,deadline:finding.date};
+  const data={title:finding.title,description:finding.description,priority:finding.priority,urgency:finding.urgency,estimatedMinutes:finding.estimatedMinutes,deadline:finding.date,responsibleNames:finding.responsibleNames??[]};
   const marker={source:"openai",meetingId,meetingFingerprint:meeting.fingerprint,findingId:finding.id,findingKind:finding.kind};
   if(finding.kind==="task") {
     const plan=buildDailyCommand(state,userId,"create_task_suggestion",{...data,projectId:item.projectId,reason:"Tarea detectada en la reunión; revisa el alcance, la fecha y la estimación antes de aprobar.",evidence},commandId,now);

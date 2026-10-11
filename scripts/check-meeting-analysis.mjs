@@ -17,6 +17,9 @@ const {meetingPassages,citablePassages,resolveMeetingEvidence,resolveMeetingAnal
 const text="Ana: Decidimos usar material zafiro. Luis: Preparar el informe de muestra el 15 de octubre de 2026.";
 const finding={kind:"decision",title:"Usar material zafiro",description:"Acuerdo ficticio para la demostración",quote:"Decidimos usar material zafiro.",date:null,confidence:90,priority:3,urgency:3,estimatedMinutes:30};
 const valid=validateMeetingPart({summary:"Resumen ficticio",findings:[finding]},text,0);
+const responsible={...finding,kind:"task",quote:"Luis: Preparar el informe de muestra el 15 de octubre de 2026.",responsibleNames:["Luis"]};
+assert.deepEqual(Array.from(validateMeetingPart({summary:"Responsable citado",findings:[responsible]},text,0).findings[0].responsibleNames),["Luis"]);
+assert.throws(()=>validateMeetingPart({summary:"Nombre inventado",findings:[{...responsible,responsibleNames:["Carlos"]}]},text,0));
 const formatted="## Notas de Gemini\r\n\r\n**Ana (00:02:10):** Decidimos usar material **zafiro**.\r\nLuis: La reunión usa comillas “curvas” y espacios\u00a0especiales.\n".repeat(200)+"🧠".repeat(410)+"\nFin de la reunión ficticia.";
 const passages=meetingPassages(formatted);assert.equal(passages.map(passage=>passage.text).join(""),formatted);assert.ok(passages.every(passage=>passage.text.length<=400));assert.ok(passages.every(passage=>!/[\uD800-\uDBFF]$/.test(passage.text)));assert.ok(citablePassages(passages).length<1000);
 const selected=passages[3],resolved=resolveMeetingEvidence({summary:"Resumen",findings:[{...finding,evidenceId:selected.id,quote:"Cita inventada que no debe almacenarse"}]},passages);assert.equal(resolved.findings[0].quote,selected.text.trim());assert.ok(formatted.includes(resolved.findings[0].quote));validateMeetingPart(resolved,formatted,0);

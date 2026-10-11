@@ -1,9 +1,24 @@
-import { index, integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 
 const timestamps = {
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
 };
+
+// Project-scoped operational aggregate; updates use a compare-and-swap guard
+// and are committed atomically with tasks, payments and their timeline event.
+export const projectOperations = sqliteTable("project_operations", {
+  id: text("id").primaryKey(), userId: text("user_id").notNull(), projectId: text("project_id").notNull(),
+  data: text("data").notNull(), updatedAt: text("updated_at").notNull(),
+}, table => [uniqueIndex("idx_operations_owner_project").on(table.userId, table.projectId)]);
+
+export const projectShares = sqliteTable("project_shares", {
+  id: text("id").primaryKey(), userId: text("user_id").notNull(), projectId: text("project_id").notNull(),
+  personId: text("person_id").notNull(), tokenHash: text("token_hash").notNull(),
+  active: integer("active", { mode: "boolean" }).notNull().default(true),
+  requestCount: integer("request_count").notNull().default(0), windowStart: text("window_start").notNull(),
+  ...timestamps,
+}, table => [uniqueIndex("idx_shares_token").on(table.tokenHash), index("idx_shares_person").on(table.userId, table.projectId, table.personId)]);
 
 export const projects = sqliteTable("projects", {
   id: text("id").primaryKey(),

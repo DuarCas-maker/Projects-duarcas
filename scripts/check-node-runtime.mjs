@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { d1Adapter, migrate, openSqlite } from "../runtime/sqlite.mjs";
@@ -9,7 +9,7 @@ let sql;
 try {
   const file = join(directory, "fixture.sqlite");
   sql = openSqlite(file); migrate(sql); migrate(sql);
-  assert.equal(sql.prepare("SELECT count(*) n FROM _node_migrations").get().n, 5);
+  assert.equal(sql.prepare("SELECT count(*) n FROM _node_migrations").get().n, JSON.parse(await readFile(new URL("../drizzle/meta/_journal.json", import.meta.url), "utf8")).entries.length);
   const db = d1Adapter(sql);
   await db.exec("CREATE TABLE fixture (id TEXT PRIMARY KEY, value INTEGER NOT NULL)");
   assert.equal((await db.prepare("INSERT INTO fixture VALUES (?,?)").bind("one", 1).run()).meta.changes, 1);

@@ -1,13 +1,14 @@
 "use client";
 
-import { useState } from "react";
-import { GitBranch, Link2, RefreshCw, ExternalLink, FileText } from "lucide-react";
+import { useEffect, useState } from "react";
+import { GitBranch, Code2 as Github, Link2, RefreshCw, ExternalLink, FileText } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { projectRepositorySources } from "@/lib/github-context";
 import type { Workspace } from "@/lib/workspace-types";
+import type { GithubConnection } from "@/lib/github-app";
 
 export async function fetchGithubContext(projectId: string, repositoryId?: string) {
   const query = new URLSearchParams({projectId,context:"1",...(repositoryId ? {repositoryId} : {})});
@@ -22,6 +23,23 @@ export function RepositoryPanel({state,projectId,acceptState}: {state:Workspace;
   const sources = projectRepositorySources(state,project.userId,projectId);
   const [url,setUrl] = useState(""), [branch,setBranch] = useState("");
   const [busy,setBusy] = useState(""), [error,setError] = useState(""), [preview,setPreview] = useState<{title:string;text:string}|null>(null);
+  const [connection,setConnection] = useState<GithubConnection|null>(null), [connectionError,setConnectionError] = useState(""), [checking,setChecking] = useState(true);
+  useEffect(()=>{
+    const controller = new AbortController();
+    void checkConnection(controller.signal);
+    return ()=>controller.abort();
+  },[]);
+  async function checkConnection(signal?: AbortSignal) {
+    setChecking(true);setConnectionError("");
+    try {
+      const response = await fetch("/api/github",{cache:"no-store",signal});
+      const result = await response.json() as GithubConnection & {error?:string};
+      if (!response.ok) throw new Error(result.error || "No se pudo comprobar GitHub.");
+      if (!signal?.aborted) setConnection(result);
+    } catch (failure) {
+      if (!signal?.aborted) {setConnection(null);setConnectionError(failure instanceof Error ? failure.message : "No se pudo comprobar GitHub.");}
+    } finally { if (!signal?.aborted) setChecking(false); }
+  }
   async function mutate(action: "link"|"sync", repositoryId?: string) {
     setBusy(repositoryId ?? "link"); setError("");
     try {
@@ -42,7 +60,23 @@ export function RepositoryPanel({state,projectId,acceptState}: {state:Workspace;
   }
   return <section className="panel repository-panel">
     <div className="section-title"><div><p className="eyebrow">GITHUB · SOLO LECTURA</p><h2>Repositorios de {project.name}</h2></div><span>{linked.length}/10 vinculados</span></div>
-    <p className="repository-note">Cada repositorio aporta contexto únicamente a este proyecto. Este piloto lee repositorios públicos, sin permisos de escritura. Los privados requieren una GitHub App.</p>
+    <p className="repository-note">Cada repositorio aporta contexto únicamente a este proyecto. Lee repositorios públicos y los privados que autorices en GitHub, con permisos de solo lectura.</p>
+    <div className="github-connection" aria-busy={checking}>
+      <div className="github-connection-heading"><Github size={20}/><div><strong>{checking ? "Comprobando GitHub…" : connection?.installations.length ? "GitHub conectado" : "Conectar repositorios privados"}</strong>
+        <p className="repository-note">{connection?.installations.length ? `${connection.installations.map(i=>i.account).join(", ")} · ${connection.repositories.length} repositorios autorizados` : connection?.configured ? `Instala la App en ${connection.accounts.join(", ")} y elige los repositorios que puede leer.` : "La conexión privada necesita configurar la GitHub App en el servidor."}</p></div></div>
+      <div className="repository-actions">
+        {connection?.installUrl && connection.installations.length < connection.accounts.length && <a className="github-connect-link" href={connection.installUrl} target="_blank" rel="noopener noreferrer"><Github size={16}/>{connection.installations.length ? "Conectar otra cuenta autorizada" : "Conectar GitHub"}<ExternalLink size={14}/></a>}
+        {connection?.installations.map(i=><a className="github-connect-link" key={i.account} href={i.manageUrl} target="_blank" rel="noopener noreferrer">Autorizar repositorios · {i.account}<ExternalLink size={14}/></a>)}
+        <Button type="button" variant="outline" size="sm" disabled={checking || !!busy} onClick={()=>void checkConnection()}><RefreshCw size={15}/>{checking ? "Comprobando…" : "Actualizar conexión"}</Button>
+      </div>
+      {connectionError && <p className="repository-error" role="alert">{connectionError}</p>}
+      {connection?.configured && <p className="repository-note">Después de autorizar en GitHub, vuelve aquí y pulsa Actualizar conexión. Selecciona un repositorio para vincularlo a este proyecto.</p>}
+      {!!connection?.repositories.length && <label className="github-repository-picker">Repositorio autorizado<select aria-label="Seleccionar repositorio autorizado de GitHub" value={connection.repositories.some(r=>r.url === url) ? url : ""} disabled={!!busy || checking || linked.length >= 10} onChange={event=>{setUrl(event.target.value);setBranch("");}}>
+        <option value="">Selecciona un repositorio…</option>
+        {connection.repositories.map(r=><option key={r.fullName} value={r.url}>{r.fullName} · {r.private ? "Privado" : "Público"}</option>)}
+      </select></label>}
+      {connection?.partial && <p className="repository-note">La lista es parcial. Puedes vincular otro repositorio autorizado mediante su URL.</p>}
+    </div>
     <form className="repository-link-form" onSubmit={event=>{event.preventDefault();void mutate("link");}}>
       <label>URL del repositorio<Input aria-label="URL del repositorio de GitHub" type="url" required maxLength={250} placeholder="https://github.com/propietario/repositorio" value={url} onChange={event=>setUrl(event.target.value)} disabled={!!busy}/></label>
       <label>Rama (opcional)<Input aria-label="Rama del repositorio" maxLength={100} placeholder="Predeterminada de GitHub" value={branch} onChange={event=>setBranch(event.target.value)} disabled={!!busy}/></label>

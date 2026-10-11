@@ -9,13 +9,14 @@ import { fileURLToPath } from "node:url";
 import { openSqlite, migrate } from "../runtime/sqlite.mjs";
 import { validateSnapshot } from "../runtime/transfer-contract.mjs";
 const root = fileURLToPath(new URL("../", import.meta.url));
+const dist = process.env.PROJECT_OS_NODE_DIST_DIR === ".next-node-qa" ? ".next-node-qa" : ".next-node";
 const directory = await mkdtemp(join(tmpdir(), "project-os-auth-http-"));
 const sql = openSqlite(join(directory, "project-os.sqlite")); migrate(sql); sql.close();
 const reservation = createServer(); reservation.listen(0, "127.0.0.1"); await once(reservation, "listening");
 const port = reservation.address().port; await new Promise(resolve => reservation.close(resolve));
 const origin = `http://127.0.0.1:${port}`;
 const appOrigin = "https://app.fixture.test"; // HTTPS proxy origin, like Dokploy.
-const child = spawn(process.execPath, ["--import", new URL("fixtures/auth-upstream.mjs", import.meta.url).href, join(root, ".next-node/standalone/server.js")], { cwd: root, env: {
+const child = spawn(process.execPath, ["--import", new URL("fixtures/auth-upstream.mjs", import.meta.url).href, join(root, dist, "standalone/server.js")], { cwd: root, env: {
   ...process.env, HOSTNAME: "127.0.0.1", PORT: String(port), NODE_ENV: "production", NEXT_TELEMETRY_DISABLED: "1",
   PROJECT_OS_AUTH_FIXTURE: "synthetic-only", PROJECT_OS_DATA_DIR: directory, PROJECT_OS_BACKEND: "supabase", PROJECT_OS_REQUIRE_EXISTING_WORKSPACE: "true", PROJECT_OS_WORKSPACE_ID: "existing-workspace",
   PROJECT_OS_APP_URL: appOrigin, SUPABASE_URL: "https://supabase.fixture.test", SUPABASE_PUBLISHABLE_KEY: "public-fixture", SUPABASE_SECRET_KEY: "server-fixture", PROJECT_OS_OWNER_EMAIL: "owner@fixture.test", PROJECT_OS_OWNER_ID: "", OPENAI_API_KEY: "", GBRAIN_CLIENT_SECRET: "",
@@ -25,15 +26,15 @@ const request = (path, init = {}) => fetch(origin + path, { ...init, redirect: "
 try {
   for (let attempt = 0; ; attempt++) {
     try { if ((await request("/login")).ok) break; } catch {}
-    if (attempt > 60 || child.exitCode !== null) throw new Error("Fixture server failed: " + log);
+    if (attempt > 300 || child.exitCode !== null) throw new Error("Fixture server failed: " + log);
     await new Promise(resolve => setTimeout(resolve, 100));
   }
   assert.equal((await request("/")).headers.get("location"), "/login");
   assert.equal((await request("/deployment")).headers.get("location"), "/login");
-  for (const path of ["/api/state", "/api/ai", "/api/brain?projectId=fixture", "/api/search?q=fixture", "/api/meetings?id=fixture&file=transcript", "/api/meetings/analyze?id=fixture", "/api/meetings/revise?id=fixture", "/api/projects/update?projectId=fixture", "/api/auth"]) {
+  for (const path of ["/api/state", "/api/ai", "/api/github", "/api/repositories?projectId=fixture", "/api/project-shares?projectId=fixture", "/api/project-deliveries?projectId=fixture&deliveryId=fixture", "/api/brain?projectId=fixture", "/api/search?q=fixture", "/api/meetings?id=fixture&file=transcript", "/api/meetings/analyze?id=fixture", "/api/meetings/revise?id=fixture", "/api/projects/update?projectId=fixture", "/api/auth"]) {
     const response = await request(path); assert.equal(response.status, 401, path); assert.ok(response.headers.get("cache-control").includes("no-store"), path);
   }
-  for (const path of ["/api/action", "/api/documents", "/api/ai", "/api/brain", "/api/brain/answer", "/api/search", "/api/meetings", "/api/meetings/analyze", "/api/meetings/revise", "/api/projects/update", "/api/deployment/backup"]) {
+  for (const path of ["/api/action", "/api/project-shares", "/api/documents", "/api/ai", "/api/brain", "/api/brain/answer", "/api/search", "/api/meetings", "/api/meetings/analyze", "/api/meetings/revise", "/api/projects/update", "/api/deployment/backup"]) {
     const response = await request(path, { method: "POST", headers: { Origin: appOrigin, "Content-Type": "application/json" }, body: "{}" });
     assert.equal(response.status, 401, path);
   }

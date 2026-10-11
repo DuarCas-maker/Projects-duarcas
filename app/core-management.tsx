@@ -12,6 +12,7 @@ import { PROJECT_STATUSES, PROJECT_TYPES, COMMERCIAL_STATUSES, TASK_STATUSES, MI
 import type { Workspace } from "@/lib/workspace-types";
 import { taskMeeting } from "@/lib/task-timing";
 import { MeetingOriginField } from "./task-timing";
+import { operationsFor, operationsRecord, detailFor } from "@/lib/project-operations";
 
 export type SaveCore = (action: string, payload: Record<string, unknown>, commandId?: string) => Promise<string | null>;
 type Kind = "project" | "task" | "milestone" | "financial" | "payment";
@@ -28,15 +29,24 @@ export function CoreButton({ kind, state, save, row, projectId, title, saved }: 
   const [open, setOpen] = useState(false);
   const [values, setValues] = useState<Record<string, string>>({});
   const [dependencies, setDependencies] = useState<string[]>([]);
+  const [collaborators, setCollaborators] = useState<string[]>([]);
+  const [operationsVersion, setOperationsVersion] = useState<string | null>(null);
   const [commandId, setCommandId] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const edit = Boolean(row);
   const heading = kind === "project" ? edit ? "Editar proyecto" : "Nuevo proyecto" : kind === "task" ? edit ? "Editar tarea" : "Nueva tarea" : kind === "milestone" ? edit ? "Editar hito" : "Nuevo hito" : kind === "financial" ? "Condiciones de pago" : "Registrar pago";
   const launch = () => {
+    const taskProject = String(row?.projectId ?? projectId ?? state.projects[0]?.id ?? "");
+    const taskDetail = detailFor(operationsFor(state, taskProject), String(row?.id ?? ""));
+    setCollaborators(taskDetail.collaboratorIds);
+    const scheduleProject = kind === "project" ? String(row?.id ?? "") : taskProject;
+    const schedule = operationsFor(state, scheduleProject).schedule;
+    setOperationsVersion(operationsRecord(state, scheduleProject)?.updatedAt ?? null);
     const originMeetingId = kind === "task" && row ? row.originMeetingId || taskMeeting(state, row as Workspace["tasks"][number])?.item.id || "" : "";
-    setValues(Object.fromEntries(Object.entries({ projectId: projectId ?? state.projects[0]?.id ?? "", shortCode: "", projectType: "Por alcance", operationalStatus: "Por iniciar", commercialStatus: "Sin definir", priority: 3, strategicPriority: 3, urgency: 3, estimatedMinutes: 30, position: state.milestones.filter((item) => item.projectId === projectId).length + 1, status: "pending", currency: "COP", totalValue: 0, paymentDate: today(), ...row, ...(kind === "task" ? { originMeetingId } : {}) }).map(([key, value]) => [key, value == null ? "" : String(value)])));
+    setValues(Object.fromEntries(Object.entries({ projectId: projectId ?? state.projects[0]?.id ?? "", shortCode: "", projectType: "Por alcance", operationalStatus: "Por iniciar", commercialStatus: "Sin definir", priority: 3, strategicPriority: 3, urgency: 3, estimatedMinutes: 30, position: state.milestones.filter((item) => item.projectId === projectId).length + 1, status: "pending", currency: "COP", totalValue: 0, paymentDate: today(), ...row, ...(kind === "task" ? { originMeetingId, primaryId: taskDetail.primaryId ?? "_none", plannedStart: taskDetail.plannedStart, plannedEnd: taskDetail.plannedEnd } : {}) }).map(([key, value]) => [key, value == null ? "" : String(value)])));
     setDependencies(state.dependencies.filter((edge) => edge.taskId === row?.id).map((edge) => edge.dependsOnTaskId));
+    if (kind === "project") setValues(current => ({ ...current, projectPlannedStart: schedule?.plannedStart ?? "", projectActualStart: schedule?.actualStart ?? "" }));
     setCommandId(crypto.randomUUID()); setError(""); setOpen(true);
   };
   const set = (key: string, value: string) => setValues((current) => ({ ...current, [key]: value }));
@@ -48,8 +58,8 @@ export function CoreButton({ kind, state, save, row, projectId, title, saved }: 
     event.preventDefault(); if (saving) return;
     setSaving(true); setError("");
     let action = ""; let payload: Row = {};
-    if (kind === "project") { action = edit ? "update_project" : "create_project"; payload = { ...values, ...(edit ? { id: row!.id } : {}) }; }
-    if (kind === "task") { action = edit ? "update_task" : "create_task"; payload = { ...values, ...(edit ? { id: row!.id } : {}), milestoneId: values.milestoneId === "_none" ? "" : values.milestoneId ?? "", dependsOnTaskIds: dependencies }; }
+    if (kind === "project") { action = edit ? "update_project" : "create_project"; payload = { ...values, operationsUpdatedAt: operationsVersion, ...(edit ? { id: row!.id } : {}) }; }
+    if (kind === "task") { action = edit ? "update_task" : "create_task"; payload = { ...values, ...(edit ? { id: row!.id } : {}), milestoneId: values.milestoneId === "_none" ? "" : values.milestoneId ?? "", primaryId: values.primaryId === "_none" ? "" : values.primaryId ?? "", collaboratorIds: collaborators, operationsUpdatedAt: operationsVersion, dependsOnTaskIds: dependencies }; }
     if (kind === "milestone") { action = edit ? "update_milestone" : "create_milestone"; payload = { ...values, ...(edit ? { id: row!.id } : {}) }; }
     if (kind === "financial") { action = "update_financials"; payload = { projectId, totalValue: values.totalValue, currency: values.currency, paymentStructure: values.paymentStructure, notes: values.notes }; }
     if (kind === "payment") { action = "record_payment"; payload = { projectId, amount: values.amount, paymentDate: values.paymentDate, reference: values.reference }; }
@@ -64,14 +74,19 @@ export function CoreButton({ kind, state, save, row, projectId, title, saved }: 
       {area("description", "Objetivo y alcance")}
       <div className="core-form-row">{choice("projectType", "Tipo de proyecto", PROJECT_TYPES)}{choice("operationalStatus", "Estado operativo", PROJECT_STATUSES)}</div>
       <div className="core-form-row">{choice("commercialStatus", "Estado comercial", COMMERCIAL_STATUSES)}{input("targetEndDate", "Fecha objetivo", "date")}</div>
+      <div className="core-form-row">{input("projectPlannedStart", "Inicio planificado del proyecto", "date")}{input("projectActualStart", "Inicio real del proyecto", "date")}</div>
+      <p className="core-hint">El tiempo transcurrido usa el inicio real cuando está definido; mientras tanto, usa el planificado. Las fechas vacías se muestran como «Sin definir».</p>
       <div className="core-form-row">{rating("priority", "Prioridad (1–5)")}{rating("strategicPriority", "Prioridad estratégica (1–5)")}</div>
       {area("currentSummary", "Estado actual")}{area("nextStepSummary", "Siguiente acción")}{input("blockedReason", "Bloqueador del proyecto")}
     </>}
     {kind === "task" && <>
-      {!edit && <Choice label="Proyecto" value={values.projectId} options={state.projects.map((item) => ({ value: item.id, label: item.name }))} set={(value) => { set("projectId", value); set("milestoneId", "_none"); set("originMeetingId", ""); setDependencies([]); }} />}
+      {!edit && <Choice label="Proyecto" value={values.projectId} options={state.projects.map((item) => ({ value: item.id, label: item.name }))} set={(value) => { set("projectId", value); set("milestoneId", "_none"); set("originMeetingId", ""); set("primaryId", "_none"); setDependencies([]); setCollaborators([]); setOperationsVersion(operationsRecord(state, value)?.updatedAt ?? null); }} />}
       {input("title", "Título de la tarea", "text", true, 180)}{area("description", "Descripción y criterios de aceptación")}
       <div className="core-form-row">{choice("status", "Estado de la tarea", TASK_STATUSES)}<Choice label="Hito" value={values.milestoneId} options={[{ value: "_none", label: "Sin hito" }, ...state.milestones.filter((item) => item.projectId === values.projectId).map((item) => ({ value: item.id, label: item.name }))]} set={(value) => set("milestoneId", value)} /></div>
       <div className="core-form-row">{rating("priority", "Prioridad de tarea (1–5)")}{rating("urgency", "Urgencia (1–5)")}</div>
+      <Choice label="Responsable principal" value={values.primaryId} options={[{ value: "_none", label: "Sin asignar" }, ...operationsFor(state, values.projectId).people.filter(p => p.active).map(p => ({ value: p.id, label: p.isSelf ? `${p.name} · Tú` : p.name }))]} set={value => { set("primaryId", value); setCollaborators(current => current.filter(id => id !== value)); }} />
+      <fieldset className="core-dependencies"><legend>Colaboradores</legend>{operationsFor(state, values.projectId).people.filter(p => p.active && p.id !== values.primaryId).map(p => <label key={p.id}><Checkbox aria-label={`Colaborador ${p.name}`} checked={collaborators.includes(p.id)} onCheckedChange={checked => setCollaborators(current => checked ? [...current, p.id] : current.filter(id => id !== p.id))} /><span>{p.name}</span></label>)}{!operationsFor(state, values.projectId).people.length && <p>Añade personas desde Tareas → Personas del proyecto.</p>}</fieldset>
+      <div className="core-form-row">{input("plannedStart", "Inicio planificado (Gantt)", "date")}{input("plannedEnd", "Fin planificado (Gantt)", "date")}</div>
       <MeetingOriginField state={state} userId={state.projects.find(item => item.id === values.projectId)?.userId ?? ""} projectId={values.projectId} originalId={edit ? String(row?.originMeetingId || taskMeeting(state, row as Workspace["tasks"][number])?.item.id || "") : null} value={values.originMeetingId ?? ""} change={value => set("originMeetingId", value)} />
       <div className="core-form-row">{input("tentativeDeliveryDate", "Entrega tentativa (opcional)", "date")}{input("estimatedMinutes", "Duración estimada (minutos)", "number", true)}</div>
       {values.tentativeDeliveryDate && <Button type="button" variant="ghost" size="sm" onClick={() => set("tentativeDeliveryDate", "")}>Quitar entrega tentativa</Button>}

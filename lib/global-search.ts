@@ -2,6 +2,7 @@ import { activeKnowledge } from "./task-attachments";
 import type { Workspace } from "./workspace-types";
 import { readMeeting } from "./meetings";
 import { contentHash } from "./brain-content";
+import { operationsFor, assignmentLabel } from "./project-operations";
 
 export type SearchTab = "overview" | "tasks" | "milestones" | "payments" | "timeline" | "knowledge";
 export type SearchResult = { id:string; type:string; projectId:string|null; label:string; detail:string; excerpt:string; tab:SearchTab; knowledgeId?:string };
@@ -24,7 +25,13 @@ export function searchRecords(state:Workspace,query:string):SearchResult[] {
     if(foldSearchText(text).includes(q))matches.push({...row,detail:row.projectId ? state.projects.find(p=>p.id===row.projectId)?.name ?? "" : "Inbox",excerpt:searchExcerpt(text,query.trim())});
   };
   state.projects.forEach(p=>add({id:p.id,type:"Proyecto",projectId:p.id,label:p.name,tab:"overview"},[p.name,p.description,p.currentSummary,p.nextStepSummary,p.blockedReason,p.operationalStatus,p.commercialStatus].filter(Boolean).join("\n")));
-  state.tasks.forEach(t=>add({id:t.id,type:"Tarea",projectId:t.projectId,label:t.title,tab:"tasks"},[t.title,t.description,t.blockingReason,t.status,t.deadline].filter(Boolean).join("\n")));
+  state.tasks.forEach(t=>add({id:t.id,type:"Tarea",projectId:t.projectId,label:t.title,tab:"tasks"},[t.title,t.description,t.blockingReason,t.status,t.deadline,assignmentLabel(operationsFor(state,t.projectId),t.id)].filter(Boolean).join("\n")));
+  state.projects.forEach(project => {
+    const data = operationsFor(state, project.id);
+    data.people.forEach(person => add({ id: person.id, type: "Persona", projectId: project.id, label: person.name, tab: "tasks" }, [person.name, person.email, person.role].join("\n")));
+    data.agreements.forEach(agreement => add({ id: agreement.id, type: "Acuerdo de pago", projectId: project.id, label: agreement.title, tab: "payments" }, [agreement.title, agreement.currency, agreement.direction, data.people.find(p => p.id === agreement.personId)?.name].filter(Boolean).join("\n")));
+    data.comments.forEach(comment => add({ id: comment.id, type: "Comentario", projectId: project.id, label: state.tasks.find(t => t.id === comment.taskId)?.title ?? "Comentario de tarea", tab: "tasks" }, comment.body));
+  });
   state.milestones.forEach(m=>add({id:m.id,type:"Hito",projectId:m.projectId,label:m.name,tab:"milestones"},[m.name,m.description,m.status].join("\n")));
   state.events.forEach(e=>add({id:e.id,type:"Historial",projectId:e.projectId,label:e.title,tab:"timeline"},`${e.title}\n${e.description}`));
   activeKnowledge(state).forEach(k=>{const meeting=readMeeting(k);add({id:k.id,type:meeting ? "Reunión" : "Contexto",projectId:k.projectId,label:k.title,tab:"knowledge",knowledgeId:k.id},[k.title,k.summary,meeting ? meeting.files.map(f=>f.name).join("\n") : k.itemType==="task_resource"?null:k.sourceReference].filter(Boolean).join("\n"));});

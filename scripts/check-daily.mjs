@@ -1,17 +1,13 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
 import vm from "node:vm";
-import ts from "typescript";
-const context = vm.createContext({ crypto, Intl, Date, Set, Map });
-const modules = new Map();
-async function mod(name) {
-  if (modules.has(name)) return modules.get(name);
-  const source = await readFile(new URL(`../lib/${name}.ts`, import.meta.url), "utf8");
-  const module = new vm.SourceTextModule(ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } }).outputText, { context }); modules.set(name, module);
-  await module.link((specifier) => mod(specifier.split("/").at(-1))); return module;
-}
-const daily = await mod("daily-commands"), types = await mod("workspace-types"), ai = await mod("ai-context");
-await daily.evaluate(); await types.evaluate(); await ai.evaluate();
+const { build } = await import("esbuild");
+const entries = ["daily-commands", "workspace-types", "ai-context", "core-commands", "daily-engine"];
+const compiled = await build({ stdin: { contents: entries.map(name => 'export * from "./' + name + '";').join('\n'), resolveDir: (await import("node:url")).fileURLToPath(new URL("../lib/", import.meta.url)) }, bundle: true, platform: "node", format: "esm", write: false });
+const context = vm.createContext({ crypto, Intl, Date, Set, Map, TextEncoder });
+const bundled = new vm.SourceTextModule(compiled.outputFiles[0].text, { context });
+await bundled.link(() => {}); await bundled.evaluate();
+const modules = new Map(entries.map(name => [name, bundled]));
+const daily = bundled, types = bundled, ai = bundled;
 const { buildCoreCommand, CoreValidationError } = modules.get("core-commands").namespace;
 const { buildDailyCommand } = daily.namespace, { bogotaDay, addDays, dayOf, planDay, rankTask } = modules.get("daily-engine").namespace;
 const { emptyWorkspace, deriveWorkspaceState } = types.namespace, { aiContext, validateAiResult } = ai.namespace;
@@ -59,6 +55,11 @@ const pack=aiContext(state,projectId); assert.ok(!pack.sources.has(foreign)); as
 const result={answer:"Resumen",facts:[{text:"Proyecto activo",sourceIds:[projectId]}],inferences:[],suggestions:[]};
 assert.equal(validateAiResult(result,pack.projectIds,pack.sources),result);
 assert.throws(()=>validateAiResult({...result,facts:[{text:"Inventado",sourceIds:["fake"]}]},pack.projectIds,pack.sources));
+const namedEvidence=JSON.stringify({records:[{id:'document-evidence',data:{summary:'Ana preparará el informe de muestras.'}}]});
+const namedSources=new Set([...pack.sources,'document-evidence']);
+const namedProposal={projectId,title:'Preparar informe',description:'Acción documentada',reason:'Compromiso citado',impact:'Entregar informe',evidenceIds:['document-evidence'],priority:3,urgency:3,estimatedMinutes:30,confidence:90,deadline:null,responsibleNames:['Ana']};
+validateAiResult({...result,suggestions:[namedProposal]},pack.projectIds,namedSources,namedEvidence);
+assert.throws(()=>validateAiResult({...result,suggestions:[{...namedProposal,responsibleNames:['Carlos']}]},pack.projectIds,namedSources,namedEvidence));
 if (process.argv.includes("--sql")) {
   const rpc=(changes)=>`public.project_os_apply_changes('${userId}', '${JSON.stringify(changes).replaceAll("'","''")}'::jsonb)`;
   const sql=plans.map((plan)=>`select ${rpc(plan.changes)};`).join("\n");

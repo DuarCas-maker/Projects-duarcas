@@ -74,7 +74,7 @@ export async function POST(request: Request) {
     catch { memory = {status:"unavailable",hits:[],warning:"No se pudo consultar GBrain. Esta respuesta utiliza únicamente los registros de Project OS."}; }
     const context = aiContext(state, projectId, inboxId, memory);
     const output = await requestProjectAi(context.text, query, history);
-    const response = validateAiResult(output.response, context.projectIds, context.sources);
+    const response = validateAiResult(output.response, context.projectIds, context.sources, context.text);
     const result = { response, sources: context.labels, inboxId, memory: {status:memory.status,count:memory.hits.length,warning:memory.warning} };
     await finishAiRun(userId, requestId, result, output.usage?.input_tokens, output.usage?.output_tokens);
     return json({ id: requestId, query, ...result });

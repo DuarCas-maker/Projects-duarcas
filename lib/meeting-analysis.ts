@@ -5,7 +5,7 @@ export const FINDING_LABELS = {decision:"Decisión",commitment:"Compromiso",dead
 export type FindingKind = keyof typeof FINDING_LABELS;
 export const MAX_MEETING_FINDINGS = 8;
 export const MAX_MEETING_TASKS = 3;
-export type MeetingFinding = {id:string;kind:FindingKind;title:string;description:string;quote:string;date:string|null;confidence:number;priority:number;urgency:number;estimatedMinutes:number;part:number};
+export type MeetingFinding = {id:string;kind:FindingKind;title:string;description:string;quote:string;date:string|null;confidence:number;priority:number;urgency:number;estimatedMinutes:number;part:number;responsibleNames?:string[]};
 export type MeetingPart = {version:1;meetingId:string;fingerprint:string;contentHash:string;part:number;totalParts:number;summary:string;findings:MeetingFinding[]};
 export type MeetingAnalysis = {status:"not_started"|"partial"|"ready";completedParts:number;totalParts:number;findings:MeetingFinding[];summaries:string[]};
 export class MeetingEvidenceError extends Error {constructor(public code:string){super(["quote","evidence_id"].includes(code)?"No se pudo verificar la cita de un hallazgo. Reintenta el fragmento; no se aplicó ningún cambio.":code==="date"?"La IA devolvió una fecha no válida. Reintenta el fragmento; no se aplicó ningún cambio.":code==="task_count"?"La IA devolvió más de tres tareas en un fragmento. Reintenta el fragmento; el avance guardado se conserva.":"La respuesta de IA no cumple el formato del análisis. Reintenta el fragmento; no se aplicó ningún cambio.");}}
@@ -27,6 +27,7 @@ export function validateMeetingPart(value:unknown,text:string,part:number) {
   const findings=row.findings.map((finding,index)=>{
     if(!finding || !Object.hasOwn(FINDING_LABELS,finding.kind) || !str(finding.title,180)||!str(finding.description,700)) return fail("finding_shape");
     if(!str(finding.quote,400)||finding.quote.trim().length<8||!text.includes(finding.quote)) return fail("quote");
+    if (finding.responsibleNames !== undefined && (!Array.isArray(finding.responsibleNames) || finding.responsibleNames.length > 5 || finding.responsibleNames.some(name => !str(name, 180) || !finding.quote.includes(name)))) return fail("quote");
     if(!Number.isInteger(finding.confidence)||finding.confidence<0||finding.confidence>100) return fail("confidence");
     if(finding.date!==null && (typeof finding.date!=="string" || !/^\d{4}-\d{2}-\d{2}$/.test(finding.date)||!Number.isFinite(Date.parse(finding.date))||new Date(`${finding.date}T12:00:00Z`).toISOString().slice(0,10)!==finding.date)) return fail("date");
     if(![finding.priority,finding.urgency].every(n=>Number.isInteger(n)&&n>=1&&n<=5)||!Number.isInteger(finding.estimatedMinutes)||finding.estimatedMinutes<5||finding.estimatedMinutes>480) return fail("ranking");

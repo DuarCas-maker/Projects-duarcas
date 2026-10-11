@@ -1,5 +1,7 @@
 import type { Workspace } from "./workspace-types";
 import { taskMeeting, projectMeetings } from "./task-timing";
+import { bogotaDay } from "./daily-engine";
+import { operationsFor, operationsRecord, detailFor, type TaskDetail } from "./project-operations";
 
 export const CORE_ACTIONS = new Set(["create_project", "update_project", "create_milestone", "update_milestone", "create_task", "update_task", "update_task_status", "update_financials", "record_payment"]);
 export const PROJECT_STATUSES = ["Por iniciar", "Activo", "Negociación", "Pausado", "Soporte", "Finalizado", "Cancelado", "Archivado"];
@@ -32,7 +34,8 @@ export function buildCoreCommand(state: Workspace, userId: string, action: strin
   const changes: CoreChange[] = [];
   let id = ""; let projectId = ""; let eventType = ""; let title = ""; let description = "";
   const save = (table: string, row: Row, previous?: Row) => {
-    const expected = previous ? ("updatedAt" in previous ? { updatedAt: previous.updatedAt } : previous) : undefined;
+    if (table === "project_operations" && new TextEncoder().encode(String(row.data)).length > 2 * 1024 * 1024) fail("El proyecto alcanzó el límite de datos de colaboración.");
+    const expected = previous ? (table === "project_operations" ? { data: previous.data, updatedAt: previous.updatedAt } : "updatedAt" in previous ? { updatedAt: previous.updatedAt } : previous) : undefined;
     changes.push({ table, kind: previous ? "update" : "insert", row: databaseRow(row), ...(expected ? { expected: databaseRow(expected) } : {}) });
   };
   const project = (value: unknown) => state.projects.find((item) => item.id === value) ?? fail("Proyecto no encontrado.", 404);
@@ -48,8 +51,24 @@ export function buildCoreCommand(state: Workspace, userId: string, action: strin
     const row = { id, userId, name, shortCode, description: text(value.description), projectType: choice(value.projectType, PROJECT_TYPES, "Por alcance"), operationalStatus: choice(value.operationalStatus, PROJECT_STATUSES, "Por iniciar"), commercialStatus: choice(value.commercialStatus, COMMERCIAL_STATUSES, "Sin definir"), priority: integer(value.priority, 3, 1, 5), strategicPriority: integer(value.strategicPriority, 3, 1, 5), targetEndDate: date(value.targetEndDate), currentSummary: text(value.currentSummary), nextStepSummary: text(value.nextStepSummary), blockedReason: text(value.blockedReason) || null, accent: choice(value.accent, ["lime", "blue", "violet", "orange", "cyan", "pink", "yellow", "red", "gray", "green"], "blue"), createdAt: previous?.createdAt ?? now, updatedAt: now };
     if (row.operationalStatus === "Finalizado" && state.tasks.some((item) => item.projectId === id && !["completed", "cancelled"].includes(item.status))) fail("Completa o cancela las tareas antes de finalizar el proyecto.", 409);
     save("projects", row, previous);
+    const operationData = operationsFor(state, id), priorOperations = operationsRecord(state, id);
+    const priorSchedule = operationData.schedule ?? { plannedStart: null, actualStart: null };
+    const schedule = {
+      plannedStart: payload.projectPlannedStart === undefined ? priorSchedule.plannedStart : date(payload.projectPlannedStart),
+      actualStart: payload.projectActualStart === undefined ? priorSchedule.actualStart : date(payload.projectActualStart),
+    };
+    if (schedule.plannedStart && row.targetEndDate && schedule.plannedStart > row.targetEndDate) fail("La finalización debe ser igual o posterior al inicio planificado.");
+    if (schedule.actualStart && schedule.actualStart > bogotaDay(new Date(now))) fail("El inicio real no puede estar en el futuro.");
+    let scheduleDescription = "";
+    if (schedule.plannedStart !== priorSchedule.plannedStart || schedule.actualStart !== priorSchedule.actualStart) {
+      if (payload.operationsUpdatedAt !== undefined && payload.operationsUpdatedAt !== (priorOperations?.updatedAt ?? null)) fail("Las fechas del proyecto cambiaron. Recarga antes de guardar.", 409);
+      operationData.schedule = schedule; operationData.revision += 1;
+      save("project_operations", { id: priorOperations?.id ?? id, userId, projectId: id, data: JSON.stringify(operationData), updatedAt: now }, priorOperations);
+      scheduleDescription = describeChanges(priorSchedule, schedule, { plannedStart: "Inicio planificado", actualStart: "Inicio real" });
+    }
     eventType = "project"; title = previous ? "Proyecto actualizado" : "Proyecto creado";
     description = previous ? describeChanges(previous, row, { name: "Nombre", shortCode: "Código", description: "Objetivo", projectType: "Tipo", operationalStatus: "Estado", commercialStatus: "Estado comercial", priority: "Prioridad", strategicPriority: "Prioridad estratégica", targetEndDate: "Fecha", currentSummary: "Estado actual", nextStepSummary: "Siguiente acción", blockedReason: "Bloqueador" }) : `${name}. ${row.description}`;
+    if (scheduleDescription) description += `. ${scheduleDescription}`;
   } else if (action === "create_milestone" || action === "update_milestone") {
     const previous = action === "update_milestone" ? state.milestones.find((item) => item.id === payload.id) ?? fail("Hito no encontrado.", 404) : undefined;
     projectId = project(previous?.projectId ?? payload.projectId).id; id = previous?.id ?? uuid();
@@ -82,6 +101,25 @@ export function buildCoreCommand(state: Workspace, userId: string, action: strin
     const blockingReason = status === "blocked" ? text(value.blockingReason) || "Bloqueo manual" : null;
     const row = { id, userId, projectId, milestoneId, parentTaskId: previous?.parentTaskId ?? null, title: required(value.title, "El título"), description: text(value.description), status, priority: integer(value.priority, 3, 1, 5), urgency: integer(value.urgency, 3, 1, 5), estimatedMinutes: integer(value.estimatedMinutes, 30, 1, 10080), deadline: date(value.deadline), tentativeDeliveryDate: date(value.tentativeDeliveryDate), originMeetingId: requestedMeetingId, scheduledStart: previous?.scheduledStart ?? null, scheduledEnd: previous?.scheduledEnd ?? null, isBlocked: status === "blocked", blockingReason, sourceType: previous?.sourceType ?? "manual", sourceId: previous?.sourceId ?? null, aiGenerated: previous?.aiGenerated ?? false, approved: previous?.approved ?? true, completedAt: status === "completed" ? previous?.completedAt ?? now : null, createdAt: previous?.createdAt ?? now, updatedAt: now };
     save("tasks", row, previous);
+    const operationData = operationsFor(state, projectId), priorDetail = detailFor(operationData, id);
+    if (["primaryId", "collaboratorIds", "plannedStart", "plannedEnd", "columnId"].some(key => payload[key] !== undefined) || priorDetail.columnId && operationData.columns.find(c => c.id === priorDetail.columnId)?.status !== status) {
+      const priorOperations = operationsRecord(state, projectId);
+      if (payload.operationsUpdatedAt !== undefined && payload.operationsUpdatedAt !== (priorOperations?.updatedAt ?? null)) fail("Las asignaciones cambiaron. Recarga antes de guardar.", 409);
+      const validPerson = (value: unknown) => operationData.people.find(p => p.id === value && p.active)?.id ?? fail("Selecciona una persona activa del proyecto.");
+      const primaryId = payload.primaryId === undefined ? priorDetail.primaryId : payload.primaryId ? validPerson(payload.primaryId) : null;
+      const collaboratorIds = payload.collaboratorIds === undefined ? priorDetail.collaboratorIds : Array.isArray(payload.collaboratorIds) ? [...new Set(payload.collaboratorIds.map(validPerson))] : fail("Los colaboradores no son válidos.");
+      if (collaboratorIds.length > 20 || primaryId && collaboratorIds.includes(primaryId)) fail("El responsable principal debe ser distinto de los colaboradores (máximo 20).");
+      const plannedStart = payload.plannedStart === undefined ? priorDetail.plannedStart : date(payload.plannedStart);
+      const plannedEnd = payload.plannedEnd === undefined ? priorDetail.plannedEnd : date(payload.plannedEnd);
+      if (!!plannedStart !== !!plannedEnd || plannedStart && plannedEnd && plannedEnd < plannedStart) fail("Define inicio y fin planificados; el fin no puede ser anterior al inicio.");
+      const requestedColumn = payload.columnId === undefined ? priorDetail.columnId : text(payload.columnId, 100) || null;
+      const selectedColumn = operationData.columns.find(c => c.id === requestedColumn);
+      if (payload.columnId && (!selectedColumn || selectedColumn.status !== status)) fail("La columna no corresponde al estado de la tarea.");
+      const detail: TaskDetail = { primaryId, collaboratorIds, plannedStart, plannedEnd, columnId: selectedColumn?.status === status ? selectedColumn.id : null };
+      operationData.taskDetails[id] = detail;
+      operationData.revision++;
+      save("project_operations", { id: priorOperations?.id ?? projectId, userId, projectId, data: JSON.stringify(operationData), updatedAt: now }, priorOperations);
+    }
     if (payload.dependsOnTaskIds !== undefined) {
       for (const edge of currentEdges) changes.push({ table: "task_dependencies", kind: "delete", row: { id: edge.id, user_id: userId }, expected: databaseRow(edge) });
       for (const parent of dependencyIds) save("task_dependencies", { id: uuid(), userId, taskId: id, dependsOnTaskId: parent, dependencyType: "finish_to_start" });
@@ -89,9 +127,11 @@ export function buildCoreCommand(state: Workspace, userId: string, action: strin
     eventType = "task"; title = previous ? "Tarea actualizada" : "Tarea creada";
     description = previous ? `${row.title}. ${describeChanges(previous, row, { title: "Título", description: "Descripción", status: "Estado", priority: "Prioridad", urgency: "Urgencia", estimatedMinutes: "Minutos", deadline: "Fecha límite", tentativeDeliveryDate: "Entrega tentativa", originMeetingId: "Reunión de origen", milestoneId: "Hito", blockingReason: "Bloqueo" })}` : `${row.title} · ${status}${row.tentativeDeliveryDate ? ` · Entrega tentativa: ${row.tentativeDeliveryDate}` : ""}`;
     if (payload.dependsOnTaskIds !== undefined) description += `. Dependencias: ${dependencyIds.map((parent) => task(parent).title).join(", ") || "ninguna"}`;
+    if (changes.some(c => c.table === "project_operations")) { const d = operationData.taskDetails[id]; description += `. Responsable: ${operationData.people.find(p => p.id === d.primaryId)?.name ?? "sin asignar"}. Colaboradores: ${d.collaboratorIds.map(personId => operationData.people.find(p => p.id === personId)?.name).join(", ") || "ninguno"}. Planificado: ${d.plannedStart ?? "sin fecha"} → ${d.plannedEnd ?? "sin fecha"}.`; }
   } else if (action === "update_financials" || action === "record_payment") {
     projectId = project(payload.projectId).id;
     const previous = state.financials.find((item) => item.projectId === projectId);
+    if (operationsFor(state, projectId).agreements.some(a => a.legacy)) fail("El saldo anterior ya pertenece a un acuerdo. Usa las cuotas y revisiones del acuerdo.", 409);
     if (action === "record_payment" && !previous) fail("Define primero el valor y la moneda del proyecto.");
     const totalValue = action === "record_payment" ? previous!.totalValue : integer(payload.totalValue, previous?.totalValue ?? 0, 0);
     const currency = text(action === "record_payment" ? previous!.currency : payload.currency ?? previous?.currency ?? "COP", 3).toUpperCase();

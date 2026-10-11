@@ -33,6 +33,10 @@ Requiere Node >=22.13 y dependencias instaladas. Copia las variables de `.env.ex
 
 Abre http://127.0.0.1:3001/login. La vista local usa login real de Supabase, pero conserva los datos de desarrollo `local_seedy` en D1/R2 locales: no se sincronizan con producción. El iniciador comprueba la disponibilidad del puerto y no detiene otros procesos.
 
+Para revisar la aplicación completa con los proyectos y originales de producción, usa `node scripts/start-production-preview.mjs` después de `node scripts/build-node.mjs`. Reutiliza las credenciales de servidor de `.env.local` y necesita un archivo privado `.env.production-preview.local` con `PROJECT_OS_WORKSPACE_ID` igual al alojamiento de producción, `PROJECT_OS_DATA_DIR=.node-runtime/production-preview` y `PORT=3002`. No cambia la configuración del preview de desarrollo. La vista abre **http://127.0.0.1:3002/**, verifica que el espacio ya exista y nunca importa datos ficticios. Los cambios en proyectos y archivos afectan al mismo Supabase de producción.
+
+Los análisis de reuniones, cuotas e índice local viven en SQLite del alojamiento. Para incluirlos en la revisión local, descarga una copia autenticada desde **/deployment** en producción e impórtala con `scripts/import-auxiliary.mjs` en el directorio local nuevo, antes de consultar o generar análisis. Esta copia refleja la fecha de descarga; no comparte en vivo el volumen del servidor. Conserva el login real en localhost.
+
 ## Datos existentes y configuración de producción
 
 Variables solo del servidor:
@@ -140,6 +144,12 @@ Pruebas adicionales: `npm run test:transfer` y `npm run test:auth:http` (esta ú
 
 ## Desarrollo y publicación
 
+### GitHub privado · solo lectura
+
+El gestor admite una GitHub App dedicada para listar y vincular repositorios privados autorizados a cada proyecto. La configuración y los pasos de instalación en la cuenta `DuarCas-maker` y el servicio Project OS de Dokploy están en [deploy/github-app.md](deploy/github-app.md). Requiere `GITHUB_APP_ID`, `GITHUB_APP_SLUG`, `GITHUB_APP_PRIVATE_KEY` y `GITHUB_ALLOWED_ACCOUNTS`, exclusivamente en el servidor. No reutiliza la App de despliegue de Dokploy y no requiere migraciones.
+
+**Contexto → Actualizar conexión → seleccionar repositorio → Vincular → Sincronizar**. Los tokens de lectura se limitan al repositorio solicitado y la autorización se comprueba en cada sincronización. Se mantienen la lectura pública, las copias por commit, la exclusión de credenciales y la separación por proyecto. Pruebas sin servicios reales: `npm run test:github` y `npm run test:github:app`.
+
 ### Seguimiento unificado (fase 5)
 
 En **Proyectos → proyecto → Resumen → Seguimiento unificado**, la lectura combina el estado operativo, tareas elegibles y prioridades, análisis de la reunión seleccionada, decisiones/resúmenes locales, memoria recuperada de GBrain y las versiones activas de los repositorios de **ese proyecto**. No incluye conversaciones de Codex ni cambios locales sin subir.
@@ -165,6 +175,31 @@ La publicación de Sites mantiene el mismo proyecto de `.openai/hosting.json`. S
 
 ## Núcleo de gestión
 
+### Pagos y colaboración por proyecto
+
+En **Pagos**, crea acuerdos separados de ingresos del cliente y gastos de personas/proveedores. Cada acuerdo tiene moneda, valor, modalidad y cuotas con nombres y porcentajes que deben sumar exactamente 100%. Puedes asociar vencimiento, hito, ambos o ninguno. **Registrar abono** acepta pagos parciales; **Completar cuota** prepara el saldo completo para registrarlo. Los movimientos conservan fecha y referencia. Las revisiones exigen motivo, conservan los pagos y no permiten eliminar cuotas con movimientos ni reducirlas por debajo de lo ya recibido/pagado. Los saldos anteriores se incorporan mediante **Configurar cuotas del saldo anterior**, conservando dinero e historial.
+
+Las modalidades son total fijo, total contratado repartido en mensualidades y valor recurrente por período. Las mensualidades calculan los vencimientos vacíos desde el inicio; un recurrente permite **Emitir siguiente período** con la frecuencia elegida. La emisión es manual. Revisar un recurrente modifica los períodos futuros; los emitidos conservan sus importes. El presupuesto general se compara con los gastos acordados en la misma moneda; las monedas se muestran separadas.
+
+En **Tareas → Personas del proyecto**, añade personas y marca tu ficha con **Soy yo**. Cada tarea acepta un responsable principal y colaboradores. Las subpestañas Todas, Mis tareas, personas y Sin asignar usan las mismas tareas en Lista, Kanban y Gantt. Kanban admite columnas propias y arrastre; sus estados respetan las dependencias e hitos existentes. Gantt mueve/ajusta únicamente inicio y fin planificados, también con las flechas del teclado. No cambia fecha límite, entrega tentativa, reunión ni otras tareas. Hoy y Calendario parten de Mis tareas, incluyendo las tareas antiguas sin asignar, y permiten filtrar personas.
+
+La IA puede proponer nombres respaldados por evidencia de reuniones o documentos; aparecen para **Revisar y añadir**. La creación de fichas y la asignación siguen requiriendo tu confirmación. Se reutiliza la configuración existente de OpenAI; las pruebas no realizan llamadas de pago.
+
+**Enlace** genera una vista personal de un proyecto, sin registro, para ver sus tareas, cambiar estados, comentar y subir documentos/imágenes de hasta 10 MB. Solo expone tareas asignadas como responsable o colaborador y sus recursos vigentes; excluye pagos, otros proyectos, correos y originales históricos. Quien tenga el enlace puede usarlo. Se muestra una vez, puede reemplazarse o desactivarse y deja de dar acceso cuando cambia la asignación. El servidor guarda únicamente su hash. Las acciones se atribuyen al enlace. **Actualizar datos** en la cabecera recarga los cambios de colaboradores; la vista compartida también tiene **Actualizar**.
+
+Antes de desplegar esta versión o arrancar una vista previa conectada a Supabase real, aplicar **supabase/migrations/20261011_0006_project_operations.sql** desde el administrador autorizado. Es una transacción aditiva: crea las tablas privadas de operaciones/enlaces y amplía el RPC existente, sin reescribir proyectos ni pagos anteriores. A continuación compilar y desplegar el servidor. En SQLite/D1 se añade **drizzle/0005_acoustic_wallow.sql**; Node aplica las migraciones al iniciar. No se han aplicado estas migraciones a producción como parte de las pruebas locales.
+
+Validación sin servicios reales: `npm run test:operations`, `npm run test:sharing:http` (requiere `npm run build:docker`), y las comprobaciones existentes de núcleo, planificación, reuniones, seguimiento, autenticación y paleta. Si Windows mantiene bloqueada `.next-node/standalone`, la carpeta alternativa permite compilar y comprobar sin detener procesos ajenos:
+
+```powershell
+$env:PROJECT_OS_NODE_DIST_DIR = '.next-node-qa'
+node scripts/build-node.mjs
+node scripts/check-project-sharing-http.mjs
+node scripts/check-auth-http.mjs
+```
+
+`scripts/start-node.mjs` y `scripts/start-production-preview.mjs` admiten esa misma variable. La vista previa real sigue requiriendo aplicar primero la migración de Supabase. El entorno ficticio y sus archivos se eliminan al terminar las pruebas.
+
 ### Archivos y enlaces de tareas
 
 En **Tareas → Archivos**, se pueden subir varios archivos o agregar enlaces HTTPS. El primer envío usa **Enviar a contexto**; después, **Actualizar archivo / enlace** guarda una nueva versión y actualiza Contexto automáticamente. Los recursos se agrupan por tarea y conservan el historial descargable. Las búsquedas y la IA usan la versión vigente; las anteriores permanecen en el historial.
@@ -182,6 +217,12 @@ Prueba del flujo con datos ficticios y sin llamadas externas: `node --experiment
 - **Historial:** cada operación se guarda atómicamente con su evento. Reintentar la misma operación no duplica el registro ni el pago. Los formularios solo se cierran después de confirmar el guardado y conservan los campos ante un error.
 
 La vista Hoy calcula sus prioridades, bloqueos y fechas con los datos guardados y la zona horaria de Bogotá. No se presentan números ficticios de progreso.
+
+Hoy abre con los proyectos activos y por iniciar y el filtro Mis tareas (conserva las tareas aún sin asignar). Sus KPI cuentan todas las fechas: total = pendientes + completadas, excluyendo canceladas. Cada tarjeta despliega el reparto por proyecto y filtra la agenda; la selección de proyecto y responsable se mantiene en las siguientes acciones, agenda, bloqueadores y calendario del día. La agenda ordena por fecha límite confirmada y agrupa al final las tareas sin fecha; una entrega tentativa nunca genera atraso.
+
+El resumen de proyectos muestra el avance de todo el equipo: completadas / tareas no canceladas, con segmentos separados de completadas y canceladas sobre el total de registros. La barra de tiempo usa inicio real, o el planificado si aún no existe, y la fecha objetivo de finalización; se limita a 0–100 % y deja «Sin definir» cuando faltan fechas. Ambos inicios se editan desde «Fechas» y se guardan en `project_operations.data.schedule` junto con el proyecto y su evento, con control de conflictos. No requiere nuevas columnas ni una migración adicional. La línea de tiempo compara proyectos sobre una escala común e identifica los que aún no tienen fechas. En móvil la tabla se transforma en tarjetas y conserva las acciones de iniciar, completar y editar.
+
+`node scripts/check-today-dashboard.mjs` verifica los totales, filtros, fechas de Bogotá, atrasos, cancelaciones, progreso y persistencia de los inicios con datos sintéticos. Después de una compilación en `.next-node-qa`, `node scripts/preview-today-fixture.mjs` abre una prueba aislada en `http://127.0.0.1:3101/`, sin leer variables privadas ni consultar servicios externos.
 
 ## Daily OS e IA
 

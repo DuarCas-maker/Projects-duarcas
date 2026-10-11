@@ -3,10 +3,11 @@ import { isSupabaseConfigured, applySupabaseChanges } from "./supabase";
 import { buildCoreCommand, CoreValidationError, type CoreChange } from "@/lib/core-commands";
 import { getWorkspaceState } from "./workspace";
 import { DAILY_ACTIONS, buildDailyCommand } from "@/lib/daily-commands";
+import { OPERATIONS_ACTIONS, buildOperationsCommand } from "@/lib/operations-commands";
 
 function statement(change: CoreChange, userId: string) {
   if (!env.DB) throw new Error("D1 unavailable");
-  const allowed = new Set(["projects", "milestones", "tasks", "task_dependencies", "project_financials", "project_events", "inbox_items", "ai_suggestions", "calendar_blocks"]);
+  const allowed = new Set(["projects", "milestones", "tasks", "task_dependencies", "project_financials", "project_events", "inbox_items", "ai_suggestions", "calendar_blocks", "project_operations", "project_shares"]);
   if (!allowed.has(change.table) || change.row.user_id !== userId) throw new Error("Invalid mutation target");
   const keys = Object.keys(change.row);
   if (keys.some((key) => !/^[a-z_]+$/.test(key))) throw new Error("Invalid mutation column");
@@ -17,7 +18,7 @@ function statement(change: CoreChange, userId: string) {
   return env.DB.prepare(`UPDATE ${change.table} SET ${editable.map((key) => `${key} = ?`).join(", ")} WHERE id = ? AND user_id = ?`).bind(...editable.map((key) => value(change.row[key])), change.row.id, userId);
 }
 
-export async function persistCorePlan(userId: string, plan: { id: string; changes: CoreChange[] }) {
+export async function persistCorePlan(userId: string, plan: { id: string; changes: CoreChange[] }, claimLegacy = true) {
   let savedId = plan.id;
   if (isSupabaseConfigured()) {
     const result = await applySupabaseChanges(userId, plan.changes);
@@ -34,7 +35,7 @@ export async function persistCorePlan(userId: string, plan: { id: string; change
     try { await env.DB.batch([...guards, ...plan.changes.map((change) => statement(change, userId))]); }
     catch (error) { if (String(error).includes("malformed JSON")) throw new CoreValidationError("El registro cambió. Recarga antes de volver a intentarlo.", 409); throw error; }
   }
-  const saved = await getWorkspaceState(userId);
+  const saved = await getWorkspaceState(userId, claimLegacy);
   return { state: saved, id: savedId, replayed: false, project: saved.projects.find((row) => row.id === savedId), task: saved.tasks.find((row) => row.id === savedId), milestone: saved.milestones.find((row) => row.id === savedId), inbox: saved.inbox.find((row) => row.id === savedId) };
 }
 
@@ -44,7 +45,7 @@ export async function executeCoreCommand(userId: string, action: string, payload
   const existing = state.events.find((event) => event.id === commandId);
   if (existing) return { state, id: existing.sourceId, replayed: true };
   if (action === "create_inbox" && state.inbox.some((item) => item.id === commandId)) return { state, id: commandId, replayed: true };
-  const build = DAILY_ACTIONS.has(action) ? buildDailyCommand : buildCoreCommand;
+  const build = OPERATIONS_ACTIONS.has(action) ? buildOperationsCommand : DAILY_ACTIONS.has(action) ? buildDailyCommand : buildCoreCommand;
   const plan = build(state, userId, action, payload, commandId);
   return persistCorePlan(userId, plan);
 }

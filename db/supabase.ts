@@ -21,6 +21,7 @@ const TABLES = {
   calendar: "calendar_blocks",
   knowledge: "knowledge_items",
   repositories: "repositories",
+  operations: "project_operations",
 } as const;
 
 function config() {
@@ -124,7 +125,7 @@ export async function ensureSupabaseWorkspace(userId: string, loadSnapshot: () =
   // overwriting records already saved in Supabase or removing the D1 source.
   for (const [key, table] of Object.entries(TABLES)) {
     const values = snapshot[key as keyof WorkspaceState];
-    for (let offset = 0; offset < values.length; offset += 200) await upsert(table, values.slice(offset, offset + 200));
+    for (let offset = 0; offset < (values?.length ?? 0); offset += 200) await upsert(table, values!.slice(offset, offset + 200));
     if (key === "tasks") await upsert("task_evidence", snapshot.evidence);
   }
   await request(tablePath("workspace_bootstrap"), {
@@ -135,7 +136,7 @@ export async function ensureSupabaseWorkspace(userId: string, loadSnapshot: () =
 }
 
 export async function getSupabaseWorkspaceState(userId: string): Promise<WorkspaceState> {
-  const [projects, milestones, tasks, dependencies, financials, events, suggestions, inbox, calendar, knowledge, repositories] = await Promise.all([
+  const [projects, milestones, tasks, dependencies, financials, events, suggestions, inbox, calendar, knowledge, repositories, operations] = await Promise.all([
     rows<WorkspaceState["projects"][number]>(TABLES.projects, userId, "priority.desc"),
     rows<WorkspaceState["milestones"][number]>(TABLES.milestones, userId),
     rows<WorkspaceState["tasks"][number]>(TABLES.tasks, userId, "priority.desc"),
@@ -147,8 +148,9 @@ export async function getSupabaseWorkspaceState(userId: string): Promise<Workspa
     rows<WorkspaceState["calendar"][number]>(TABLES.calendar, userId, "starts_at.asc"),
     rows<WorkspaceState["knowledge"][number]>(TABLES.knowledge, userId, "occurred_at.desc"),
     rows<WorkspaceState["repositories"][number]>(TABLES.repositories, userId),
+    rows<NonNullable<WorkspaceState["operations"]>[number]>(TABLES.operations, userId),
   ]);
-  return { projects, milestones, tasks, dependencies, financials, events, suggestions, inbox, calendar, knowledge, repositories };
+  return { projects, milestones, tasks, dependencies, financials, events, suggestions, inbox, calendar, knowledge, repositories, operations };
 }
 
 export async function supabaseProjectExists(userId: string, projectId: string) {
@@ -215,6 +217,15 @@ export async function deleteSupabaseDocument(key: string) {
 }
 
 export const SUPABASE_TABLES = TABLES;
+
+export async function getSupabaseShares(userId: string, projectId: string) {
+  const params = new URLSearchParams({ select: "*", user_id: `eq.${userId}`, project_id: `eq.${projectId}`, active: "eq.true", order: "created_at.desc", limit: "1000" });
+  return (await request<JsonRecord[]>(tablePath("project_shares", params))).map(row => fromDatabase<typeof import("./schema").projectShares.$inferSelect>(row));
+}
+export async function getSupabaseShareByHash(tokenHash: string) {
+  const params = new URLSearchParams({ select: "*", token_hash: `eq.${tokenHash}`, active: "eq.true", limit: "1" });
+  return (await request<JsonRecord[]>(tablePath("project_shares", params))).map(row => fromDatabase<typeof import("./schema").projectShares.$inferSelect>(row))[0];
+}
 
 // Read only the private object selected by a workspace-owned knowledge row.
 // No browser-supplied URL or signed public URL is accepted.

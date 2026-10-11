@@ -13,10 +13,11 @@ export type Workspace = {
   calendar: (typeof schema.calendarBlocks.$inferSelect)[];
   knowledge: (typeof schema.knowledgeItems.$inferSelect)[];
   repositories: (typeof schema.repositories.$inferSelect)[];
+  operations?: (typeof schema.projectOperations.$inferSelect)[];
 };
 
 export function emptyWorkspace(): Workspace {
-  return { projects: [], tasks: [], milestones: [], dependencies: [], financials: [], events: [], suggestions: [], inbox: [], calendar: [], knowledge: [], repositories: [] };
+  return { projects: [], tasks: [], milestones: [], dependencies: [], financials: [], events: [], suggestions: [], inbox: [], calendar: [], knowledge: [], repositories: [], operations: [] };
 }
 
 export function deriveWorkspaceState(state: Workspace): Workspace {

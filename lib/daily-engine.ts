@@ -1,4 +1,5 @@
 import type { Workspace, Task } from "./workspace-types";
+import { filterTaskPerson, financeTotals } from "./project-operations";
 
 const closed = ["Finalizado", "Cancelado", "Archivado", "Pausado"];
 export function bogotaDay(now = new Date()) {
@@ -11,7 +12,8 @@ export function rankTask(task: Task, state: Workspace, day = bogotaDay()) {
   const days = task.deadline ? Math.round((Date.parse(task.deadline) - Date.parse(day)) / 86400000) : null;
   const downstream = state.dependencies.filter((edge) => edge.dependsOnTaskId === task.id && !["completed", "cancelled"].includes(state.tasks.find((item) => item.id === edge.taskId)?.status ?? "")).length;
   const finance = state.financials.find((item) => item.projectId === task.projectId);
-  const paid = finance?.paymentStatus === "paid" || project?.commercialStatus === "Pagado";
+  const totals = financeTotals(state, task.projectId);
+  const paid = totals.some(t => t.income > 0) && totals.every(t => t.income === t.received) || !totals.length && (finance?.paymentStatus === "paid" || project?.commercialStatus === "Pagado");
   const recurring = project?.commercialStatus === "Recurrente" || project?.projectType === "Recurrente";
   const reasons = [`prioridad manual ${task.priority}/5`, `urgencia ${task.urgency}/5`];
   if (days !== null && days < 0) reasons.push(`vencida desde ${task.deadline}`);
@@ -29,12 +31,12 @@ export function eligibleTasks(state: Workspace, day = bogotaDay()) {
     .sort((a, b) => rankTask(b, state, day).score - rankTask(a, state, day).score || (a.deadline ?? "9999").localeCompare(b.deadline ?? "9999") || a.id.localeCompare(b.id));
 }
 export type PlanBlock = { projectId: string; taskId: string; title: string; startsAt: string; endsAt: string; reason: string };
-export function planDay(state: Workspace, options: { day: string; start: string; end: string; breakMinutes: number }, now = new Date()) {
+export function planDay(state: Workspace, options: { day: string; start: string; end: string; breakMinutes: number; personId?: string }, now = new Date()) {
   const start = Date.parse(`${options.day}T${options.start}:00-05:00`);
   const end = Date.parse(`${options.day}T${options.end}:00-05:00`);
   const busy = state.calendar.filter((block) => block.status === "approved" && Date.parse(block.endsAt) > start && Date.parse(block.startsAt) < end).sort((a, b) => a.startsAt.localeCompare(b.startsAt));
   const alreadyBooked = new Set(state.calendar.filter((block) => block.taskId && block.status !== "cancelled" && Date.parse(block.endsAt) > now.getTime() && (block.status === "approved" || dayOf(block.startsAt) !== options.day)).map((block) => block.taskId));
-  const tasks = eligibleTasks(state, options.day).filter((task) => !alreadyBooked.has(task.id));
+  const tasks = eligibleTasks(state, options.day).filter((task) => filterTaskPerson(state, task, options.personId ?? "mine") && !alreadyBooked.has(task.id));
   let cursor = Math.max(start, Math.ceil(now.getTime() / 900000) * 900000);
   const blocks: PlanBlock[] = []; const unscheduled: string[] = [];
   for (const task of tasks) {
