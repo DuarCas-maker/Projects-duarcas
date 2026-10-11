@@ -70,7 +70,7 @@ export async function POST(request: Request) {
     const history = kind === "chat" ? (await aiStatus(userId, scope)).history : [];
     await reserveAiRun(userId, requestId, scope, String(kind), query); reserved = { userId, id: requestId };
     let memory: BrainMemory;
-    try { memory = await recallMemory(userId,projectId ? [projectId] : state.projects.map((item) => item.id),safeMemoryText(query),requestId); }
+    try { memory = await recallMemory(userId,projectId ? [projectId] : state.projects.map((item) => item.id),safeMemoryText(query),requestId,state); }
     catch { memory = {status:"unavailable",hits:[],warning:"No se pudo consultar GBrain. Esta respuesta utiliza únicamente los registros de Project OS."}; }
     const context = aiContext(state, projectId, inboxId, memory);
     const output = await requestProjectAi(context.text, query, history);

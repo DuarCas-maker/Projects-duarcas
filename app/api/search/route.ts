@@ -1,3 +1,4 @@
+import { activeKnowledge } from "@/lib/task-attachments";
 import { currentWorkspaceId, WorkspaceConfigurationError } from "@/lib/workspace-context";
 import { getWorkspaceState } from "@/db/workspace";
 import { searchIndex,indexKnowledge,readIndexedSource } from "@/db/knowledge-search";
@@ -18,7 +19,7 @@ export async function GET(request:Request){
     if(query.length>160 || !Number.isSafeInteger(page) || page<1)throw new BrainError("Busca una frase de hasta 160 caracteres.",400);
     const userId=await currentWorkspaceId(),state=await getWorkspaceState(userId);
     if(params.has("sourceId")){
-      const item=state.knowledge.find(k=>k.id===params.get("sourceId") && k.userId===userId && state.projects.some(p=>p.id===k.projectId && p.userId===userId));
+      const item=activeKnowledge(state).find(k=>k.id===params.get("sourceId") && k.userId===userId && state.projects.some(p=>p.id===k.projectId && p.userId===userId));
       if(!item)throw new BrainError("Fuente no encontrada.",404);
       return json(await readIndexedSource(userId,item));
     }
@@ -31,7 +32,7 @@ export async function POST(request:Request){
     const userId=await currentWorkspaceId(request);
     const input=await request.text();if(input.length>1000)throw new BrainError("Entrada demasiado grande.",413);
     const body=JSON.parse(input) as {knowledgeId?:unknown;retry?:boolean};if(!body||typeof body!=="object"||typeof body.knowledgeId!=="string")throw new BrainError("Selecciona una fuente.",400);
-    const state=await getWorkspaceState(userId),item=state.knowledge.find(k=>k.id===body.knowledgeId && k.userId===userId && state.projects.some(p=>p.id===k.projectId && p.userId===userId));
+    const state=await getWorkspaceState(userId),item=activeKnowledge(state).find(k=>k.id===body.knowledgeId && k.userId===userId && state.projects.some(p=>p.id===k.projectId && p.userId===userId));
     if(!item)throw new BrainError("Fuente no encontrada.",404);
     return json(await indexKnowledge(userId,item,body.retry===true));
   }catch(error){return failure(error);}

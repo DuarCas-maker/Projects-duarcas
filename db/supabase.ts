@@ -182,14 +182,18 @@ export async function applySupabaseChanges(userId: string, changes: CoreChange[]
   });
 }
 
-export async function updateSupabaseRow(table: string, userId: string, id: string, patch: JsonRecord) {
+export async function updateSupabaseRow(table: string, userId: string, id: string, patch: JsonRecord, expected?:JsonRecord) {
   const params = new URLSearchParams({ user_id: `eq.${userId}`, id: `eq.${id}` });
+  for(const [column,value] of Object.entries(expected??{})) {
+    if(column!=="source_reference")throw new Error("Invalid comparison column");
+    params.set(column,value===null?"is.null":`eq.${value}`);
+  }
   const result = await request<JsonRecord[]>(tablePath(table, params), {
     method: "PATCH",
     headers: { "Content-Type": "application/json", Prefer: "return=representation" },
     body: JSON.stringify(toDatabase(patch)),
   });
-  if (!result.length) throw new Error(`${table} row not found`);
+  if (!result.length) {if(expected)throw new SupabaseConflictError();throw new Error(`${table} row not found`);}
   return fromDatabase<JsonRecord>(result[0]);
 }
 

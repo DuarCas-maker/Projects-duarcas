@@ -1,3 +1,4 @@
+import { activeKnowledge } from "@/lib/task-attachments";
 import { env } from "cloudflare:workers";
 import type { Workspace } from "@/lib/workspace-types";
 import { BrainError } from "@/lib/gbrain-client";
@@ -31,7 +32,7 @@ export async function indexKnowledge(userId:string,item:Workspace["knowledge"][n
 }
 export async function searchIndex(userId:string,state:Workspace,query:string) {
   const projects=new Set(state.projects.filter(p=>p.userId===userId).map(p=>p.id));
-  const items=state.knowledge.filter(k=>k.userId===userId && projects.has(k.projectId));
+  const items=activeKnowledge(state).filter(k=>k.userId===userId && projects.has(k.projectId));
   const rows=(await db().prepare("SELECT id,project_id,knowledge_id,fingerprint,status,error FROM knowledge_search WHERE user_id = ?").bind(userId).all<IndexRow>()).results;
   const indexed=new Map(rows.map(r=>[r.knowledge_id,r])),valid:IndexRow[]=[];
   const coverage:SearchCoverage={total:items.length,ready:0,pending:[],unavailable:[]};

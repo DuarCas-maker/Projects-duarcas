@@ -1,3 +1,4 @@
+import { activeKnowledge } from "@/lib/task-attachments";
 import { env } from "cloudflare:workers";
 import { currentWorkspaceId, WorkspaceConfigurationError } from "@/lib/workspace-context";
 import { getWorkspaceState } from "@/db/workspace";
@@ -33,18 +34,18 @@ export async function POST(request: Request) {
     const body = JSON.parse(await boundedText(new Response(request.body),80000)) as Record<string,unknown>;
     if (!body || Array.isArray(body) || typeof body !== "object") throw new BrainError("Entrada no válida.",400);
     const state = await getWorkspaceState(userId), row = project(state,body.projectId);
-    if (!brainConfigured() || env.PROJECT_OS_BRAIN_ENABLED !== "true") throw new BrainError("GBrain no está activado en este servidor.");
+    if (body.action!=="search" && (!brainConfigured() || env.PROJECT_OS_BRAIN_ENABLED !== "true")) throw new BrainError("GBrain no está activado en este servidor.");
     if (typeof body.requestId !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(body.requestId)) throw new BrainError("Identificador de operación no válido.",400);
     if (body.action === "search") {
       if (typeof body.query !== "string" || !body.query.trim() || body.query.length > 1000) throw new BrainError("Escribe una búsqueda de hasta 1000 caracteres.",400);
-      return json(await recallMemory(userId,[row.id],safeMemoryText(body.query),body.requestId));
+      return json(await recallMemory(userId,[row.id],safeMemoryText(body.query),body.requestId,state));
     }
     if (!["process","create_note"].includes(String(body.action))) throw new BrainError("Operación de memoria no válida.",400);
     let item: Workspace["knowledge"][number] | undefined, text = "", title: string;
     if (body.action === "process") {
-      item = state.knowledge.find((entry) => entry.id === body.knowledgeId && entry.projectId === row.id);
+      item = activeKnowledge(state).find((entry) => entry.id === body.knowledgeId && entry.projectId === row.id);
       if (!item) throw new BrainError("Fuente no encontrada en este proyecto.",404);
-      if (item.storageKey) documentFormat(item.storageKey);
+      if (item.storageKey && item.itemType!=="task_resource") documentFormat(item.storageKey);
       title = item.title;
     } else {
       title = typeof body.title === "string" ? body.title.trim() : "";

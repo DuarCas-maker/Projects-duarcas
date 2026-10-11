@@ -52,7 +52,7 @@ export async function memoryAnswerContext(userId:string,state:Workspace,projectI
     }
   } else {
     let memory;
-    try {memory=await recallMemory(userId,[projectId],safeMemoryText(query),requestId);}
+    try {memory=await recallMemory(userId,[projectId],safeMemoryText(query),requestId,state);}
     catch {return {policy,sources,warnings,latestDate,message:"No se pudo consultar GBrain. Los originales se conservan; reintenta la pregunta o consulta la última reunión."};}
     if(memory.status!=="connected" || memory.warning) warnings.push(memory.warning??"GBrain no está configurado. Puedes consultar directamente la última reunión.");
     const activeRepos=new Set(projectRepositorySources(state,userId,projectId).map(r=>r.item.id));

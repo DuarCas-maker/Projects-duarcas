@@ -1,3 +1,4 @@
+import { activeKnowledge } from "./task-attachments";
 import type { Workspace } from "./workspace-types";
 import type { BrainMemory } from "./brain-types";
 import { bogotaDay, eligibleTasks, rankTask } from "./daily-engine";
@@ -38,7 +39,7 @@ export function projectUpdateSignature(state: Workspace, projectId: string, meet
     financials: sort(state.financials.filter(f => f.projectId === projectId)),
     events: sort(state.events.filter(e => e.projectId === projectId)),
     suggestions: sort(state.suggestions.filter(s => s.projectId === projectId)),
-    knowledge: sort(state.knowledge.filter(k => k.projectId === projectId)),
+    knowledge: sort(activeKnowledge(state).filter(k => k.projectId === projectId)),
     repositories: sort(state.repositories.filter(r => r.projectId === projectId)),
   });
 }
@@ -98,7 +99,7 @@ export function projectUpdateContext(state: Workspace, snapshot: ProjectUpdateSn
   if (snapshot.meeting) add(snapshot.meeting.id,"meeting_analysis_NOT_operational_state",{...snapshot.meeting,summaries:analysis.summaries});
   snapshot.applied.forEach(row => add(row.id,"approved_change",row));
   snapshot.recent.forEach(row=>add(row.id,"other_confirmed_change_since_meeting_DATE_NOT_CAUSED_BY_MEETING",row));
-  state.knowledge.filter(k=>k.projectId===project.id && k.userId===project.userId && !["meeting","repository"].includes(k.itemType)).slice().sort((a,b)=>b.occurredAt.localeCompare(a.occurredAt)).forEach(k=>add(k.id,"local_knowledge_summary_NOT_full_document",{title:k.title,itemType:k.itemType,summary:k.summary,occurredAt:k.occurredAt}));
+  activeKnowledge(state).filter(k=>k.projectId===project.id && k.userId===project.userId && !["meeting","repository"].includes(k.itemType)).slice().sort((a,b)=>b.occurredAt.localeCompare(a.occurredAt)).forEach(k=>add(k.id,"local_knowledge_summary_NOT_full_document",{title:k.title,itemType:k.itemType,summary:k.summary,occurredAt:k.occurredAt}));
   scopedMemory.forEach(row => add(row.id,"gbrain_retrieved_excerpt_NOT_entire_memory",row));
   snapshot.pending.forEach(row => add(row.id,"pending_NOT_applied",row));
   const tasks = state.tasks.filter(t => t.projectId === project.id).sort((a,b) => rankTask(b,state).score-rankTask(a,state).score);

@@ -1,3 +1,4 @@
+import { activeKnowledge } from "./task-attachments";
 import type { Workspace } from "./workspace-types";
 import type { AiResult } from "./ai-types";
 import { bogotaDay, rankTask } from "./daily-engine";
@@ -17,8 +18,9 @@ export function aiContext(state: Workspace, projectId?: string, inboxId?: string
   add("milestone", state.milestones.filter((item) => ids.has(item.projectId)).slice(0, 30).map(({ userId: _, ...row }) => row));
   add("financial", state.financials.filter((item) => ids.has(item.projectId)).map(({ userId: _, ...row }) => row));
   add("event", state.events.filter((item) => ids.has(item.projectId)).sort((a, b) => b.eventDate.localeCompare(a.eventDate)).slice(0, 35).map(({ userId: _, ...row }) => row));
-  add("knowledge", state.knowledge.filter((item) => ids.has(item.projectId)).slice(0, 15).map(item => {
+  add("knowledge", activeKnowledge(state).filter((item) => ids.has(item.projectId)).slice(0, 15).map(item => {
     const {userId:_,storageKey:_key,...row} = item;
+    if(item.itemType==="task_resource")return {...row,sourceReference:"Recurso vigente de una tarea"};
     if (item.itemType !== "meeting") return row;
     const meeting = readMeeting(item);
     // Keep private storage paths/hashes out of AI prompts. Actual transcript

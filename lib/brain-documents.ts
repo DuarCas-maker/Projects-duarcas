@@ -12,10 +12,11 @@ const wordPart = /^word\/(?:document|footnotes|endnotes|header\d+|footer\d+)\.xm
 
 export function documentFormat(key: string) {
   const extension = key.split(".").at(-1)?.toLowerCase();
-  if (extension === "pdf" || extension === "docx") return extension;
+  if (extension === "pdf" || extension === "docx" || extension === "xlsx" || extension === "pptx") return extension;
   if (["txt", "md", "markdown", "csv", "json", "srt", "vtt"].includes(extension ?? "")) return "text";
   if (extension === "doc") throw new BrainError("Este Word usa el formato .doc antiguo. Conviértelo a .docx y vuelve a subirlo. El original se conserva.", 422);
-  throw new BrainError("Se pueden procesar PDF con texto, Word .docx, TXT, Markdown, CSV y JSON. El original se conserva.", 422);
+  if(extension==="xls"||extension==="ppt")throw new BrainError(`Este archivo usa el formato .${extension} antiguo. Conviértelo a .${extension}x y vuelve a subirlo. El original se conserva.`,422);
+  throw new BrainError("Se pueden procesar PDF con texto, Word .docx, Excel .xlsx, PowerPoint .pptx, TXT, Markdown, CSV y JSON. El original se conserva.", 422);
 }
 
 export async function boundedDocumentBytes(response: Response, maxBytes: number) {
@@ -68,7 +69,7 @@ async function pdfText(bytes: Uint8Array, maxTextBytes: number) {
 
 // Inspect the ZIP directory before inflating: reject oversized/ambiguous parts,
 // ZIP64, encryption, duplicate names and archive bombs. Ignore images/macros.
-function wordDirectory(bytes: Uint8Array) {
+function wordDirectory(bytes: Uint8Array,selected=wordPart,main="word/document.xml") {
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   let end = bytes.length - 22;
   for (; end >= Math.max(0, bytes.length - 65558); end--) if (view.getUint32(end, true) === 0x06054b50 && end + 22 + view.getUint16(end + 20, true) === bytes.length) break;
@@ -86,15 +87,47 @@ function wordDirectory(bytes: Uint8Array) {
     if (names.has(name) || name.includes("..") || name.includes("\\") || name.startsWith("/")) throw new BrainError("El archivo Word contiene entradas ambiguas.", 422);
     names.add(name);
     if (view.getUint32(local, true) !== 0x04034b50 || local + 30 + view.getUint16(local + 26, true) + view.getUint16(local + 28, true) + compressed > start) throw new BrainError("El archivo Word está incompleto o dañado.", 422);
-    if (wordPart.test(name)) {
+    if (selected.test(name)) {
       total += expanded;
       if (expanded > MAX_WORD_XML_BYTES || total > MAX_WORD_TOTAL_XML_BYTES) throw new BrainError("El contenido interno de Word es demasiado grande. Divide el documento; el original se conserva.", 413);
       parts.set(name,{size:expanded,crc:view.getUint32(offset + 16,true)});
     }
     offset = next;
   }
-  if (offset !== end || !parts.has("word/document.xml") || !names.has("[Content_Types].xml")) throw new BrainError("El archivo no contiene un documento Word .docx válido.", 422);
+  if (offset !== end || !parts.has(main) || !names.has("[Content_Types].xml")) throw new BrainError("El archivo no contiene un documento Office válido.", 422);
   return parts;
+}
+
+async function officeText(bytes:Uint8Array,format:"xlsx"|"pptx",max:number) {
+  if(bytes.length<22)throw new BrainError("El documento Office está dañado.",422);
+  const selected=format==="xlsx"?/^xl\/(?:workbook|sharedStrings|worksheets\/sheet\d+)\.xml$/:/^ppt\/(?:presentation|slides\/slide\d+|notesSlides\/notesSlide\d+)\.xml$/;
+  const parts=wordDirectory(bytes,selected,format==="xlsx"?"xl/workbook.xml":"ppt/presentation.xml");
+  const [{unzipSync},{XMLParser,XMLValidator}]=await Promise.all([import("fflate"),import("fast-xml-parser")]);
+  const files=unzipSync(bytes,{filter:entry=>parts.has(entry.name)});
+  const parser=new XMLParser({ignoreAttributes:false,removeNSPrefix:true,parseTagValue:false,trimValues:false,maxNestedTags:100,isArray:name=>["si","sheet","row","c"].includes(name)});
+  const parsed=new Map<string,Record<string,unknown>>();
+  for(const [name,expected] of parts) {
+    const xml=new TextDecoder("utf-8",{fatal:true}).decode(files[name]);
+    if(files[name]?.length!==expected.size||crc32(files[name])!==expected.crc||/<!DOCTYPE|<!ENTITY/i.test(xml)||XMLValidator.validate(xml)!==true)throw new BrainError("El documento Office está dañado o contiene entidades no admitidas.",422);
+    if((xml.match(/</g)?.length??0)>50_000)throw new BrainError("El documento Office es demasiado complejo.",413);
+    parsed.set(name,parser.parse(xml));
+  }
+  const strings=(value:unknown):string=>{if(typeof value==="string")return value;if(Array.isArray(value))return value.map(strings).join("");if(value&&typeof value==="object")return Object.entries(value).filter(([key])=>key==="t"||key==="r"||key==="#text").map(([,v])=>strings(v)).join("");return "";};
+  const sections:string[]=[];
+  if(format==="xlsx") {
+    const shared=(parsed.get("xl/sharedStrings.xml") as {sst?:{si?:unknown[]}})?.sst?.si?.map(strings)??[];
+    const workbook=parsed.get("xl/workbook.xml") as {workbook?:{sheets?:{sheet?:{"@_name"?:string}[]}}};
+    const sheets=[...parsed.keys()].filter(name=>name.startsWith("xl/worksheets/")).sort((a,b)=>a.localeCompare(b,undefined,{numeric:true}));
+    for(const [index,name] of sheets.entries()) {
+      const sheet=parsed.get(name) as {worksheet?:{sheetData?:{row?:{c?:{"@_t"?:string;v?:string;is?:unknown}[]}[]}}};
+      const rows=(sheet.worksheet?.sheetData?.row??[]).map(row=>(row.c??[]).map(cell=>cell["@_t"]==="s"?shared[Number(cell.v)]??"":cell["@_t"]==="inlineStr"?strings(cell.is):String(cell.v??"")).join("\t"));
+      sections.push(`[Hoja: ${workbook.workbook?.sheets?.sheet?.[index]?.["@_name"]??index+1}]\n${rows.join("\n")}`);
+    }
+  } else {
+    const visit=(value:unknown):string[]=>{if(Array.isArray(value))return value.flatMap(visit);if(!value||typeof value!=="object")return [];return Object.entries(value).flatMap(([key,v])=>key==="t"?[strings(v)]:key.startsWith("@_")?[]:visit(v));};
+    for(const name of [...parsed.keys()].filter(name=>name!=="ppt/presentation.xml").sort((a,b)=>a.localeCompare(b,undefined,{numeric:true})))sections.push(`[${name.includes("notesSlides")?"Notas de diapositiva":"Diapositiva"} ${name.match(/\d+/)?.[0]}]\n${visit(parsed.get(name)).join("\n")}`);
+  }
+  return extractedText(sections.join("\n\n"),max);
 }
 
 const crcTable = Uint32Array.from({length:256}, (_,value) => {
@@ -151,13 +184,13 @@ export async function extractDocumentText(key: string, bytes: Uint8Array, meetin
   if (extracting) throw new BrainError("Hay otro documento en procesamiento. Reintenta en unos segundos.", 429);
   extracting = true;
   const maxTextBytes = meeting ? MAX_SOURCE_BYTES : MAX_EXTRACTED_BYTES;
-  const task = (format === "pdf" ? pdfText(bytes,maxTextBytes) : wordText(bytes,maxTextBytes)).finally(() => {extracting = false;});
+  const task = (format === "pdf" ? pdfText(bytes,maxTextBytes) : format==="xlsx"||format==="pptx"?officeText(bytes,format,maxTextBytes):wordText(bytes,maxTextBytes)).finally(() => {extracting = false;});
   let timeout: ReturnType<typeof setTimeout> | undefined;
   try {
     return await Promise.race([task, new Promise<never>((_, reject) => {timeout = setTimeout(() => reject(new BrainError("La extracción tardó demasiado. Divide el documento o vuelve a intentarlo; el original se conserva.", 503)), 15000);})]);
   } catch (error) {
     if (error instanceof BrainError) throw error;
     if (error instanceof Error && error.name === "PasswordException") throw new BrainError("El PDF está protegido con contraseña. Sube una copia sin protección; el original se conserva.", 422);
-    throw new BrainError(`No se pudo leer este ${format === "pdf" ? "PDF" : "Word"}. Comprueba que no esté dañado o protegido. El original se conserva.`, 422);
+    throw new BrainError(`No se pudo leer este ${format === "pdf" ? "PDF" : format==="xlsx"?"Excel":format==="pptx"?"PowerPoint":"Word"}. Comprueba que no esté dañado o protegido. El original se conserva.`, 422);
   } finally { if (timeout) clearTimeout(timeout); }
 }

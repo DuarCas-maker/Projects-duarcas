@@ -78,7 +78,7 @@ export async function POST(request:Request) {
     if (cached) return json({latest:cached,replayed:true});
     await reserveProjectUpdate(c.userId,body.requestId,c.project.id,c.query);reserved={userId:c.userId,id:body.requestId};
     let memory:BrainMemory;
-    try {memory=await recallMemory(c.userId,[c.project.id],`Estado, acuerdos, bloqueadores y próxima acción de ${c.project.name}${c.snapshot.meeting ? ` después de ${c.snapshot.meeting.title}` : ""}`.slice(0,1000),body.requestId);}
+    try {memory=await recallMemory(c.userId,[c.project.id],`Estado, acuerdos, bloqueadores y próxima acción de ${c.project.name}${c.snapshot.meeting ? ` después de ${c.snapshot.meeting.title}` : ""}`.slice(0,1000),body.requestId,c.state);}
     catch {memory={status:"unavailable",hits:[],warning:"No se pudo consultar GBrain. La lectura usa solo registros y análisis guardados de Project OS."};}
     const repositories=await repositoryFollowupContext(c.userId,c.state,c.project.id);
     const context=projectUpdateContext(c.state,c.snapshot,c.analysis,memory,repositories),output=await requestProjectUpdate(context),result=validateProjectUpdate(output.result,context);

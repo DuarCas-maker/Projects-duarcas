@@ -10,6 +10,8 @@ import { getSupabaseDocumentBytes, insertSupabaseRow, isSupabaseConfigured, upda
 import { documentFormat, extractDocumentText, boundedDocumentBytes, MAX_DOCUMENT_BYTES } from "./brain-documents";
 import type { Workspace } from "./workspace-types";
 import type { BrainMemory } from "./brain-types";
+import { activeKnowledge,readTaskVersion } from "./task-attachments";
+import { foldSearchText,searchFingerprint } from "./global-search";
 
 export function brainConfig() { return { url: env.GBRAIN_URL ?? "", sourceId: env.GBRAIN_SOURCE_ID ?? "", clientId: env.GBRAIN_CLIENT_ID ?? "", clientSecret: env.GBRAIN_CLIENT_SECRET ?? "" }; }
 export function brainConfigured() { const c = brainConfig(); return !!(c.url && c.sourceId && c.clientId && c.clientSecret); }
@@ -24,6 +26,12 @@ export async function brainConnected() {
 }
 type Knowledge = Workspace["knowledge"][number];
 export async function knowledgeText(userId: string, item: Knowledge) {
+  if(item.itemType==="task_attachment")throw new BrainError("Este adjunto todavía no es una fuente de Contexto.",409);
+  if(item.itemType==="task_resource") {
+    const version=readTaskVersion(item);
+    if(item.userId!==userId||!version?.textKey)throw new BrainError("El recurso está guardado, pero su contenido aún no está preparado. Reintenta desde Archivos de la tarea.",409);
+    return safeSourceText(new TextDecoder("utf-8",{fatal:true}).decode(await originalBytes(userId,item.projectId,version.textKey,512*1024)));
+  }
   if (item.itemType === "meeting") {
     const meeting = readMeeting(item);
     if (!meeting || item.userId !== userId) throw new BrainError("La ficha de reunión no es válida o no pertenece a este espacio.",422);
@@ -92,8 +100,9 @@ export async function processMemory(userId: string, projectName: string, item: K
     const finalized = await setMemoryState(row,"ready","",true);
     if (!finalized && (await memoryLink(userId,item.projectId,item.id))?.status !== "ready") return {knowledgeId:item.id,status:"pending",processedParts:completed,totalParts:parts.length};
     try {
-      if (isSupabaseConfigured()) await updateSupabaseRow(SUPABASE_TABLES.knowledge,userId,item.id,{processingStatus:"indexed"});
-      else await getDb().update(knowledgeItems).set({processingStatus:"indexed"}).where(and(eq(knowledgeItems.id,item.id),eq(knowledgeItems.userId,userId)));
+      const processingStatus=item.itemType==="task_resource"?"ready":"indexed";
+      if (isSupabaseConfigured()) await updateSupabaseRow(SUPABASE_TABLES.knowledge,userId,item.id,{processingStatus});
+      else await getDb().update(knowledgeItems).set({processingStatus}).where(and(eq(knowledgeItems.id,item.id),eq(knowledgeItems.userId,userId)));
     } catch { /* The durable bridge is authoritative; don't replay a committed embedding for a display-state failure. */ }
     return {knowledgeId:item.id,status:"ready",processedParts:parts.length,totalParts:parts.length};
   } catch (error) {
@@ -101,16 +110,32 @@ export async function processMemory(userId: string, projectName: string, item: K
     await setMemoryState(row,failure.code === "write_pending" ? "pending" : "error",`${parts.length > 1 ? `Fragmentos verificados: ${completed} de ${parts.length}. ` : ""}${failure.message}`,true); throw failure;
   }
 }
-export async function recallMemory(userId: string, projectIds: string[], query: string, requestId: string): Promise<BrainMemory> {
-  if (!brainConfigured() || env.PROJECT_OS_BRAIN_ENABLED !== "true") return {status:"not_configured",hits:[]};
+export async function recallMemory(userId: string, projectIds: string[], query: string, requestId: string, state?:Workspace): Promise<BrainMemory> {
+  const active=state?activeKnowledge(state):undefined,activeIds=active&&new Set(active.map(k=>k.id)),local:BrainMemory["hits"]=[];
+  if(active&&env.DB) {
+    const candidates=active.filter(k=>k.userId===userId&&projectIds.includes(k.projectId)&&k.itemType==="task_resource"&&["ready","indexed"].includes(k.processingStatus)),words=foldSearchText(query).split(/\W+/).filter(w=>w.length>=4);
+    const ranked=[];
+    for(const item of candidates) {
+      const row=await env.DB.prepare("SELECT content,fingerprint,status FROM knowledge_search WHERE user_id = ? AND project_id = ? AND knowledge_id = ?").bind(userId,item.projectId,item.id).first<{content:string;fingerprint:string;status:string}>();
+      if(!row||row.status!=="ready"||row.fingerprint!==await searchFingerprint(item))continue;
+      const normalized=foldSearchText(row.content),score=words.filter(w=>normalized.includes(w)).length;
+      ranked.push({item,row,score});
+    }
+    ranked.sort((a,b)=>b.score-a.score||b.item.occurredAt.localeCompare(a.item.occurredAt));
+    for(const {item,row,score} of ranked.slice(0,5)) {const normalized=foldSearchText(row.content),needle=words.find(w=>normalized.includes(w)),start=needle?Math.max(0,normalized.indexOf(needle)-450):0;const excerpt=`${start?"…":""}${row.content.slice(start,start+1800)}${start+1800<row.content.length?"…":""}`;local.push({id:`task:${item.id}`,knowledgeId:item.id,projectId:item.projectId,title:item.title,text:excerpt,sourceReference:`Recurso vigente de tarea: ${item.title}`,score});}
+  }
+  const merge=(hits:BrainMemory["hits"])=>[...local,...hits.filter(h=>!activeIds||activeIds.has(h.knowledgeId))].filter((h,i,all)=>all.findIndex(other=>other.knowledgeId===h.knowledgeId)===i).slice(0,10);
+  if (!brainConfigured() || env.PROJECT_OS_BRAIN_ENABLED !== "true") return {status:local.length?"connected":"not_configured",hits:local,warning:local.length?"Se consultan los recursos vigentes de las tareas desde el índice local.":undefined};
   const allowed = new Set(projectIds), rows = (await memoryRows(userId,projectIds.length === 1 ? projectIds[0] : undefined)).filter((row) => allowed.has(row.project_id) && row.status === "ready" && row.source_id === brainConfig().sourceId && row.brain_id === brainConfig().url.replace(/\/$/,""));
-  if (!rows.length) return { status:"connected",hits:[] };
+  if (!rows.length) return { status:"connected",hits:local };
   const hash = await contentHash(JSON.stringify({projectIds:[...allowed].sort(),query}));
-  const reservation = await reserveBrainRequest(userId,requestId,projectIds.length === 1 ? projectIds[0] : "portfolio","search",hash);
-  if (reservation.replayed) return reservation.result as BrainMemory;
+  let reservation;
+  try {reservation=await reserveBrainRequest(userId,requestId,projectIds.length === 1 ? projectIds[0] : "portfolio","search",hash);}
+  catch(error){if(local.length)return {status:"connected",hits:local,warning:"GBrain no está disponible para esta consulta; se usan los recursos vigentes de tareas."};throw error;}
+  if (reservation.replayed) {const saved=reservation.result as BrainMemory;return {...saved,hits:merge(saved.hits)};}
   try {
     const raw = await client().call<unknown>("search",{query,source_id:brainConfig().sourceId,limit:10,snippet_chars:1800,return_unit:"window",return_window:1,token_budget:4000,fields:"full"});
-    const hits = selectMemoryHits(raw,rows);
+    const hits = merge(selectMemoryHits(raw,rows));
     const result: BrainMemory = {status:"connected",hits}; await completeBrainRequest(userId,requestId,result); return result;
-  } catch (error) { await retryBrainRequest(userId,requestId); throw error; }
+  } catch (error) { await retryBrainRequest(userId,requestId);if(local.length)return {status:"connected",hits:local,warning:"GBrain no respondió; se consultan únicamente los recursos vigentes de tareas."};throw error; }
 }

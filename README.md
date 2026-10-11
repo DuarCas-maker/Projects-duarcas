@@ -165,6 +165,16 @@ La publicación de Sites mantiene el mismo proyecto de `.openai/hosting.json`. S
 
 ## Núcleo de gestión
 
+### Archivos y enlaces de tareas
+
+En **Tareas → Archivos**, se pueden subir varios archivos o agregar enlaces HTTPS. El primer envío usa **Enviar a contexto**; después, **Actualizar archivo / enlace** guarda una nueva versión y actualiza Contexto automáticamente. Los recursos se agrupan por tarea y conservan el historial descargable. Las búsquedas y la IA usan la versión vigente; las anteriores permanecen en el historial.
+
+Se guardan originales de hasta 25 MB. La lectura admite PDF con texto, Word .docx, Excel .xlsx, PowerPoint .pptx, texto UTF-8 e imágenes PNG/JPG/WebP/GIF. Los documentos Office/PDF y las imágenes tienen un límite de lectura de 10 MB; el texto de 256 KiB. Los formatos Office antiguos se pueden guardar y necesitan conversión para leerlos. Los PDF escaneados necesitan OCR previo. Las imágenes se describen/transcriben con OpenAI al enviarlas y consumen una consulta compartida; volver a consultar la lectura guardada no genera otra.
+
+Los enlaces se leen cuando son públicos y accesibles, con una copia del texto por versión. Un recurso que necesita sesión, permisos o supera los límites queda guardado con una opción para reintentar; no se presenta su versión anterior como contenido vigente. El índice local permite búsqueda e IA sin exigir GBrain. No se necesitan tablas ni secretos nuevos.
+
+Prueba del flujo con datos ficticios y sin llamadas externas: `node --experimental-vm-modules scripts/check-task-resources.mjs`.
+
 - **Nuevo proyecto / Editar proyecto:** objetivo, tipo, estados, prioridades, fecha, resumen y siguiente acción. Archivar es reversible desde el mismo formulario; no elimina datos.
 - **Tareas:** edición de descripción, estado, duración, fecha, hito y dependencias del mismo proyecto. Se rechazan ciclos. Una tarea dependiente se desbloquea al completar sus requisitos.
 - **Hitos:** entregables ordenados con fecha y estado. No se puede completar un hito o proyecto con tareas pendientes.
