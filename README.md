@@ -140,6 +140,12 @@ Pruebas adicionales: `npm run test:transfer` y `npm run test:auth:http` (esta ú
 
 ## Desarrollo y publicación
 
+### GitHub privado · solo lectura
+
+El gestor admite una GitHub App dedicada para listar y vincular repositorios privados autorizados a cada proyecto. La configuración y los pasos de instalación en la cuenta `DuarCas-maker` y el servicio Project OS de Dokploy están en [deploy/github-app.md](deploy/github-app.md). Requiere `GITHUB_APP_ID`, `GITHUB_APP_SLUG`, `GITHUB_APP_PRIVATE_KEY` y `GITHUB_ALLOWED_ACCOUNTS`, exclusivamente en el servidor. No reutiliza la App de despliegue de Dokploy y no requiere migraciones.
+
+**Contexto → Actualizar conexión → seleccionar repositorio → Vincular → Sincronizar**. Los tokens de lectura se limitan al repositorio solicitado y la autorización se comprueba en cada sincronización. Se mantienen la lectura pública, las copias por commit, la exclusión de credenciales y la separación por proyecto. Pruebas sin servicios reales: `npm run test:github` y `npm run test:github:app`.
+
 ### Seguimiento unificado (fase 5)
 
 En **Proyectos → proyecto → Resumen → Seguimiento unificado**, la lectura combina el estado operativo, tareas elegibles y prioridades, análisis de la reunión seleccionada, decisiones/resúmenes locales, memoria recuperada de GBrain y las versiones activas de los repositorios de **ese proyecto**. No incluye conversaciones de Codex ni cambios locales sin subir.

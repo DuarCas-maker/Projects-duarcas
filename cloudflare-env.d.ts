@@ -13,6 +13,10 @@ declare namespace Cloudflare {
     PROJECT_OS_REQUIRE_AUXILIARY_IMPORT?: string;
     PROJECT_OS_BACKEND?: "d1" | "supabase";
     PROJECT_OS_WORKSPACE_ID?: string;
+    GITHUB_APP_ID?: string;
+    GITHUB_APP_SLUG?: string;
+    GITHUB_APP_PRIVATE_KEY?: string;
+    GITHUB_ALLOWED_ACCOUNTS?: string;
     OPENAI_API_KEY?: string;
     OPENAI_MODEL?: string;
     PROJECT_OS_AI_DAILY_LIMIT?: string;

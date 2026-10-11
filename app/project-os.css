@@ -667,3 +667,13 @@ input:is(:autofill, :-webkit-autofill) { -webkit-text-fill-color: var(--ink); bo
 .repository-error { padding: 12px; border-radius: 10px; background: var(--wine-soft); color: var(--brand-wine); }
 .repository-preview { width: min(900px, calc(100vw - 32px)); max-width: 900px; }
 .repository-preview pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 65vh; overflow: auto; font-size: 12px; }
+
+.github-connection { padding:18px; margin:18px 0; border:1px solid var(--line); border-radius:12px; background:var(--soft); }
+.github-connection-heading { display:flex; align-items:flex-start; gap:12px; }
+.github-connection-heading > svg { flex-shrink:0; margin-top:3px; color:var(--brand-purple); }
+.github-connection-heading strong { font-size:15px; }
+.github-connection .repository-actions { flex-wrap:wrap; margin:12px 0; }
+.github-connect-link { display:inline-flex; align-items:center; gap:8px; padding:8px 12px; border:1px solid var(--line); border-radius:8px; background:var(--surface); color:var(--brand-wine); font-size:13px; font-weight:600; }
+.github-connect-link:focus-visible { outline:2px solid var(--brand-purple); outline-offset:3px; }
+.github-repository-picker { display:flex; flex-direction:column; gap:8px; margin-top:16px; font-size:13px; }
+.github-repository-picker select { width:100%; min-height:42px; padding:8px 12px; border:1px solid var(--line); border-radius:9px; background:var(--surface); color:var(--ink); }

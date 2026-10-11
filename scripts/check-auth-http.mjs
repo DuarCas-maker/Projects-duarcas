@@ -25,12 +25,12 @@ const request = (path, init = {}) => fetch(origin + path, { ...init, redirect: "
 try {
   for (let attempt = 0; ; attempt++) {
     try { if ((await request("/login")).ok) break; } catch {}
-    if (attempt > 60 || child.exitCode !== null) throw new Error("Fixture server failed: " + log);
+    if (attempt > 300 || child.exitCode !== null) throw new Error("Fixture server failed: " + log);
     await new Promise(resolve => setTimeout(resolve, 100));
   }
   assert.equal((await request("/")).headers.get("location"), "/login");
   assert.equal((await request("/deployment")).headers.get("location"), "/login");
-  for (const path of ["/api/state", "/api/ai", "/api/brain?projectId=fixture", "/api/search?q=fixture", "/api/meetings?id=fixture&file=transcript", "/api/meetings/analyze?id=fixture", "/api/meetings/revise?id=fixture", "/api/projects/update?projectId=fixture", "/api/auth"]) {
+  for (const path of ["/api/state", "/api/ai", "/api/github", "/api/repositories?projectId=fixture", "/api/brain?projectId=fixture", "/api/search?q=fixture", "/api/meetings?id=fixture&file=transcript", "/api/meetings/analyze?id=fixture", "/api/meetings/revise?id=fixture", "/api/projects/update?projectId=fixture", "/api/auth"]) {
     const response = await request(path); assert.equal(response.status, 401, path); assert.ok(response.headers.get("cache-control").includes("no-store"), path);
   }
   for (const path of ["/api/action", "/api/documents", "/api/ai", "/api/brain", "/api/brain/answer", "/api/search", "/api/meetings", "/api/meetings/analyze", "/api/meetings/revise", "/api/projects/update", "/api/deployment/backup"]) {
