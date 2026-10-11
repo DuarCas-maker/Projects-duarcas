@@ -6,10 +6,13 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import type { Workspace } from "@/lib/workspace-types";
 import type { BrainStatus, BrainMemory } from "@/lib/brain-types";
+import { orderedProjectMeetings, type MemoryAnswerMode, type MemoryAnswerRecord } from "@/lib/memory-answer";
+import { MemoryAnswerView } from "./memory-answer";
 
 export function BrainMemoryPanel({state,projectId,acceptState}: {state:Workspace;projectId:string;acceptState:(state:Workspace)=>void}) {
   const [status,setStatus] = useState<BrainStatus|null>(null), [error,setError] = useState(""), [busy,setBusy] = useState("");
-  const [title,setTitle] = useState(""), [content,setContent] = useState(""), [query,setQuery] = useState(""), [search,setSearch] = useState<BrainMemory|null>(null);
+  const [title,setTitle] = useState(""), [content,setContent] = useState(""), [query,setQuery] = useState("");
+  const [answer,setAnswer]=useState<MemoryAnswerRecord|null>(null),[answerMode,setAnswerMode]=useState<MemoryAnswerMode>("auto");
   const operations = useRef(new Map<string,{fingerprint:string;id:string}>());
   const generation = useRef(0), stop = useRef(false);
   const [progress,setProgress] = useState("");
@@ -19,7 +22,7 @@ export function BrainMemoryPanel({state,projectId,acceptState}: {state:Workspace
     const data = await response.json() as BrainStatus;
     if (!response.ok) throw new Error(data.error || "No se pudo consultar la memoria."); setStatus(data);
   };
-  useEffect(() => { const controller = new AbortController(); setStatus(null); setSearch(null); setError(""); setTitle(""); setContent(""); setQuery(""); operations.current.clear(); void refresh(controller.signal).catch((failure) => { if (!controller.signal.aborted) setError(failure.message); }); return () => {controller.abort();generation.current++;stop.current=true;}; },[projectId]);
+  useEffect(() => { const controller = new AbortController(); setStatus(null); setAnswer(null); setAnswerMode("auto"); setError(""); setTitle(""); setContent(""); setQuery(""); operations.current.clear(); void refresh(controller.signal).catch((failure) => { if (!controller.signal.aborted) setError(failure.message); }); return () => {controller.abort();generation.current++;stop.current=true;}; },[projectId]);
   useEffect(() => { const controller = new AbortController(); void refresh(controller.signal).catch((failure) => { if (!controller.signal.aborted) setError(failure.message); }); return () => controller.abort(); },[signature]);
   const perform = async (action:string,payload:Record<string,unknown>,key:string) => {
     if (busy) return; setBusy(key); setError(""); setProgress(""); stop.current = false;
@@ -32,10 +35,6 @@ export function BrainMemoryPanel({state,projectId,acceptState}: {state:Workspace
       if (generation.current !== activeGeneration) return;
       if (data.state) acceptState(data.state);
       if (!response.ok) throw new Error(data.error || "No se pudo completar la operación.");
-      if (action === "search") {
-        if (!["connected","not_configured","unavailable"].includes(data.status) || !Array.isArray(data.hits)) throw new Error("La búsqueda no devolvió resultados válidos.");
-        setSearch({status:data.status as BrainMemory["status"],hits:data.hits,warning:data.warning});
-      }
       if (action === "create_note") { setTitle(""); setContent(""); operations.current.delete(key); }
       await refresh();
       if (action !== "process" || data.status !== "pending") break;
@@ -50,9 +49,26 @@ export function BrainMemoryPanel({state,projectId,acceptState}: {state:Workspace
     finally { if (generation.current===activeGeneration) setBusy(""); }
   };
   const enabled = !!status?.configured && !!status.enabled;
+  const latestMeeting=orderedProjectMeetings(state,state.projects.find(p=>p.id===projectId)?.userId??"",projectId)[0];
+  const ask=async()=>{
+    if(busy) return;setBusy("search");setError("");setProgress("");setAnswer(null);
+    const activeGeneration=generation.current,fingerprint=JSON.stringify({projectId,query,answerMode});
+    const old=operations.current.get("search"),requestId=old?.fingerprint===fingerprint?old.id:crypto.randomUUID();operations.current.set("search",{fingerprint,id:requestId});
+    try {
+      const response=await fetch("/api/brain/answer",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({projectId,query,mode:answerMode,requestId})});
+      const data=await response.json() as MemoryAnswerRecord & {error?:string};
+      if(generation.current!==activeGeneration) return;
+      // A successful new click must read current dates/analysis, not replay an
+      // old question forever. Only a lost network response keeps its operation.
+      operations.current.delete("search");
+      if(!response.ok) throw Error(data.error||"No se pudo responder la pregunta.");
+      setAnswer(data);
+    }catch(failure){if(generation.current===activeGeneration)setError(failure instanceof Error?failure.message:"No se pudo consultar la memoria.");}
+    finally{if(generation.current===activeGeneration){setBusy("");void refresh().catch(()=>undefined);}}
+  };
   return <section className="panel brain-panel" aria-label="Memoria GBrain">
     <div className="brain-heading"><span className="brain-symbol"><BrainCircuit size={23}/></span><div><span className="eyebrow">MEMORIA CONECTADA</span><h3>GBrain · contexto del proyecto</h3><p>{!status ? "Comprobando conexión…" : !enabled ? "GBrain no está configurado o está desactivado." : status.connected ? `Conectado · ${status.used}/${status.limit} operaciones hoy (compartidas)` : "GBrain no está disponible. Los originales están a salvo."}</p></div></div>
-    <p className="daily-hint">Solo se procesa lo que tú envíes. Originales en Project OS; texto y búsqueda en GBrain. No incluyas claves ni contraseñas. La aplicación sigue siendo pública.</p>
+    <p className="daily-hint">Originales en Project OS; texto y búsqueda en GBrain. Las preguntas se resumen con OpenAI solo cuando pulsas Buscar. No incluyas claves ni contraseñas.</p>
     <div className="brain-tools">
       <form className="brain-note" onSubmit={(event) => {event.preventDefault();void perform("create_note",{title,content},"note");}}>
         <h4><Plus size={16}/> Guardar una nota en memoria</h4>
@@ -61,9 +77,12 @@ export function BrainMemoryPanel({state,projectId,acceptState}: {state:Workspace
         <Button type="submit" disabled={!!busy || !enabled || !title.trim() || !content.trim()}>{busy === "note" ? "Guardando y procesando…" : "Guardar en memoria"}</Button>
       </form>
       <div className="brain-search"><h4><Search size={16}/> Buscar en la memoria</h4>
-        <form onSubmit={(event) => {event.preventDefault();void perform("search",{query},"search");}}><Input aria-label="Buscar en la memoria del proyecto" placeholder="Busca una decisión o tema…" maxLength={1000} value={query} onChange={(event) => setQuery(event.target.value)} disabled={!!busy}/><Button type="submit" variant="outline" disabled={!!busy || !enabled || !query.trim()}>{busy === "search" ? "Buscando…" : "Buscar"}</Button></form>
-        <small>Hasta 10 resultados y 4.000 tokens. Solo devuelve fuentes vinculadas a este proyecto.</small>
-        {search && <div className="brain-results" aria-live="polite">{search.hits.length ? search.hits.map((hit) => <article key={hit.id}><strong>{hit.title}</strong><p>{hit.text}</p><small>{hit.sourceReference}</small></article>) : <p>No hay coincidencias en las fuentes indexadas de este proyecto. Prueba otro tema o procesa una fuente.</p>}</div>}
+        <form onSubmit={(event) => {event.preventDefault();void ask();}}><Input aria-label="Buscar en la memoria del proyecto" placeholder="¿Qué fue lo último que se habló en el proyecto?" maxLength={1000} value={query} onChange={(event) => setQuery(event.target.value)} disabled={!!busy}/><Button type="submit" variant="outline" disabled={!!busy || !status?.ai?.configured || !status.ai.enabled || !query.trim()}>{busy === "search" ? "Respondiendo…" : "Buscar"}</Button></form>
+        <label className="memory-answer-mode"><span>Alcance de la pregunta</span><select aria-label="Alcance de la pregunta" value={answerMode} onChange={event=>{setAnswerMode(event.target.value as MemoryAnswerMode);setAnswer(null);}} disabled={!!busy}><option value="auto">Según la pregunta</option><option value="latest_meeting">Solo la última reunión</option></select></label>
+        <small>«Lo último» prioriza la Fecha de la reunión, no el título del archivo. {latestMeeting?`Más reciente: ${latestMeeting.meeting.date} · ${latestMeeting.item.title}.`:"Todavía no hay reuniones con fecha."}</small>
+        <small>Una respuesta consume una consulta de IA ({status?.ai?.used??0}/{status?.ai?.limit??40} hoy, compartidas). Para otros temas: hasta 10 fuentes y 4.000 tokens de búsqueda en GBrain. Las citas se muestran por separado.</small>
+        {status?.ai&&!status.ai.enabled&&<p className="daily-hint">Activa la IA para obtener respuestas resumidas. Los originales se conservan.</p>}
+        {answer&&<MemoryAnswerView record={answer}/>}
       </div>
     </div>
     <h4 className="brain-sources-title">Fuentes del proyecto</h4>

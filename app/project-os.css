@@ -550,6 +550,23 @@ button { cursor: pointer; }
 .brain-results { max-height:340px; overflow:auto; }
 .brain-results article { border:1px solid var(--line); border-radius:.7rem; background:var(--soft); padding:1rem; margin-bottom:.6rem; }
 .brain-results p { white-space:pre-wrap; overflow-wrap:anywhere; font-size:.95rem; line-height:1.6; margin:.5rem 0; }
+.memory-answer-mode { display:flex; flex-wrap:wrap; gap:.4rem; align-items:center; font-size:.85rem; color:var(--muted-copy); }
+.memory-answer-mode select { border:1px solid var(--line); border-radius:.6rem; padding:.45rem .6rem; background:var(--paper,#fff); color:var(--ink,#000); max-width:100%; }
+.memory-answer { border:1px solid var(--line); border-top:3px solid var(--brand-wine,#722f37); border-radius:.8rem; padding:1.1rem; background:#fff; overflow-wrap:anywhere; }
+.memory-answer-heading { display:flex; flex-direction:column; gap:.35rem; }
+.memory-answer-heading small { color:var(--muted-copy); }
+.memory-answer-direct { font-size:1rem; line-height:1.65; margin:1rem 0 .5rem; }
+.memory-answer-points { padding-left:1.35rem; margin:1rem 0; }
+.memory-answer-points li { padding:.6rem 0; border-top:1px solid var(--line); }
+.memory-answer-points p { line-height:1.6; margin:.35rem 0; }
+.memory-answer-kind { font-size:.75rem; font-weight:700; color:#2a0d3a; text-transform:uppercase; letter-spacing:.05em; }
+.memory-answer summary { cursor:pointer; color:#2a0d3a; font-size:.85rem; }
+.memory-answer-evidence figure { margin:.6rem 0; padding:.7rem; background:var(--soft); border-radius:.5rem; }
+.memory-answer-evidence blockquote { border-left:3px solid #722f37; padding-left:.7rem; line-height:1.5; font-size:.875rem; }
+.memory-answer-evidence figcaption { color:var(--muted-copy); margin-top:.5rem; font-size:.8rem; }
+.memory-answer-warning { font-size:.8rem; color:var(--muted-copy); line-height:1.55; border-top:1px solid var(--line); padding-top:.65rem; margin-top:.7rem; }
+.memory-answer-sources { margin-top:.8rem; }
+.memory-answer-sources ul { margin:.5rem 0; padding-left:1.2rem; font-size:.8rem; line-height:1.6; }
 .brain-sources-title { font-weight:650; margin:1rem 0 .5rem; }
 .brain-source-list { margin-bottom:1rem; }
 .brain-source-list article { display:flex; align-items:center; gap:.8rem; padding:1rem 0; border-bottom:1px solid var(--line); }

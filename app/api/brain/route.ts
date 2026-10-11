@@ -8,6 +8,7 @@ import { contentHash, safeMemoryText } from "@/lib/brain-content";
 import { documentFormat } from "@/lib/brain-documents";
 import type { Workspace } from "@/lib/workspace-types";
 import { indexKnowledge } from "@/db/knowledge-search";
+import { aiStatus } from "@/db/ai-history";
 export const dynamic = "force-dynamic";
 const json = (value: unknown, status = 200) => Response.json(value,{status,headers:{"Cache-Control":"no-store"}});
 const fail = (error: unknown, state?: Workspace) => {
@@ -21,7 +22,8 @@ export async function GET(request: Request) {
   try {
     const userId = await currentWorkspaceId(), state = await getWorkspaceState(userId), row = project(state,new URL(request.url).searchParams.get("projectId"));
     const configured = brainConfigured(), enabled = env.PROJECT_OS_BRAIN_ENABLED === "true", connected = await brainConnected();
-    return json({configured,enabled,connected,...await memoryStatus(userId,row.id)});
+    const ai=await aiStatus(userId,row.id);
+    return json({configured,enabled,connected,...await memoryStatus(userId,row.id),ai:{configured:ai.configured,enabled:ai.enabled,used:ai.used,limit:ai.limit}});
   } catch (error) { return fail(error); }
 }
 export async function POST(request: Request) {
