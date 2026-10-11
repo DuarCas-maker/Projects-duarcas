@@ -43,7 +43,7 @@ export function MeetingResources({state,projectId,acceptState}: {state:Workspace
         <label><span>Transcripción completa</span><Input name="transcript" type="file" accept={MEETING_ACCEPT} required disabled={busy}/></label>
         <label><span>Notas de la reunión (opcional)</span><Input name="notes" type="file" accept={MEETING_ACCEPT} disabled={busy}/></label>
         <small className="daily-hint">TXT, Markdown, SRT o VTT: hasta 256 KiB por archivo. PDF con texto o Word .docx: hasta 10 MiB. Procesamiento: hasta 100 páginas por PDF y 512 KiB de texto por reunión. Los archivos originales se conservan.</small>
-        <p className="daily-hint">Project OS sigue público. Estos documentos y el enlace serán accesibles desde la aplicación; los permisos del video siguen siendo los de Drive.</p>
+        <p className="daily-hint">Los documentos quedan guardados en este proyecto. El video conserva los permisos que tenga en Drive.</p>
         {error && <p className="core-form-error" role="alert">{error}</p>}
         <DialogFooter><Button type="button" variant="outline" disabled={busy} onClick={() => setOpen(false)}>Cancelar</Button><Button type="submit" disabled={busy}>{busy ? "Guardando documentos…" : "Guardar reunión"}</Button></DialogFooter>
       </form>
