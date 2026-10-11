@@ -30,10 +30,10 @@ try {
   }
   assert.equal((await request("/")).headers.get("location"), "/login");
   assert.equal((await request("/deployment")).headers.get("location"), "/login");
-  for (const path of ["/api/state", "/api/ai", "/api/brain?projectId=fixture", "/api/search?q=fixture", "/api/meetings?id=fixture&file=transcript", "/api/meetings/analyze?id=fixture", "/api/projects/update?projectId=fixture", "/api/auth"]) {
+  for (const path of ["/api/state", "/api/ai", "/api/brain?projectId=fixture", "/api/search?q=fixture", "/api/meetings?id=fixture&file=transcript", "/api/meetings/analyze?id=fixture", "/api/meetings/revise?id=fixture", "/api/projects/update?projectId=fixture", "/api/auth"]) {
     const response = await request(path); assert.equal(response.status, 401, path); assert.ok(response.headers.get("cache-control").includes("no-store"), path);
   }
-  for (const path of ["/api/action", "/api/documents", "/api/ai", "/api/brain", "/api/brain/answer", "/api/search", "/api/meetings", "/api/meetings/analyze", "/api/projects/update", "/api/deployment/backup"]) {
+  for (const path of ["/api/action", "/api/documents", "/api/ai", "/api/brain", "/api/brain/answer", "/api/search", "/api/meetings", "/api/meetings/analyze", "/api/meetings/revise", "/api/projects/update", "/api/deployment/backup"]) {
     const response = await request(path, { method: "POST", headers: { Origin: appOrigin, "Content-Type": "application/json" }, body: "{}" });
     assert.equal(response.status, 401, path);
   }

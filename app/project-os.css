@@ -537,6 +537,13 @@ button { cursor: pointer; }
 .meeting-findings blockquote { border-left:3px solid var(--brand-purple); margin:.7rem 0; padding-left:.75rem; font-size:.875rem; white-space:pre-wrap; }
 .meeting-findings small { font-size:.875rem; color:var(--muted-copy); }
 .meeting-findings article > div:last-child { margin-top:.7rem; }
+.meeting-correction-body { border-top:1px solid var(--line); padding-top:.8rem; margin-top:.8rem; }
+.meeting-correction label { display:block; font-size:.9rem; font-weight:650; margin-bottom:.5rem; }
+.meeting-correction textarea { min-height:110px; resize:vertical; background:var(--surface); }
+.meeting-correction-preview { margin-top:1rem; padding:1rem; border:1px solid var(--brand-purple); border-radius:.7rem; background:var(--purple-soft); }
+.meeting-correction-preview h5 { font-size:1rem; font-weight:650; margin-top:.4rem; }
+.meeting-correction-preview button { max-width:100%; height:auto; min-height:2rem; white-space:normal; text-align:left; }
+.meeting-correction-status { color:var(--brand-purple); font-weight:650; }
 .brain-heading { display:flex; align-items:center; gap:1rem; margin-bottom:1rem; }
 .brain-symbol { background:var(--purple-soft); color:var(--brand-purple); padding:.8rem; border-radius:.8rem; }
 .brain-heading h3 { font-size:1.3rem; font-weight:650; margin:.25rem 0; }
