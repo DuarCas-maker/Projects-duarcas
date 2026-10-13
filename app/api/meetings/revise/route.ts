@@ -7,7 +7,7 @@ import { combineMeetingParts, meetingProposalId, FINDING_LABELS, type MeetingFin
 import { findingHash, revisionPrefix, type MeetingRevision } from "@/lib/meeting-revision";
 import { buildRevisionProposal, findingHashSnapshot } from "@/lib/meeting-revision-proposals";
 import { requestMeetingRevision } from "@/lib/meeting-revision-provider";
-import { readMeeting } from "@/lib/meetings";
+import { readAnalysisResource } from "@/lib/meetings";
 import { knowledgeText } from "@/lib/brain-provider";
 import { contentHash, safeMemoryText } from "@/lib/brain-content";
 import { BrainError, boundedText } from "@/lib/gbrain-client";
@@ -25,9 +25,9 @@ function failure(error:unknown) {
   console.error("meeting_revision_failed",error instanceof Error?error.name:"unknown");return json({error:"No se pudo completar la corrección. El original se conserva y no se creó ninguna tarea."},503);
 }
 async function context(userId:string,id:unknown) {
-  if(typeof id!=="string"||!/^[a-zA-Z0-9_-]{1,100}$/.test(id))throw new AiError("Reunión no válida.",400);
-  const state=await getWorkspaceState(userId),item=state.knowledge.find(item=>item.id===id&&item.userId===userId),meeting=item&&readMeeting(item),project=item&&state.projects.find(project=>project.id===item.projectId&&project.userId===userId);
-  if(!item||!meeting||!project)throw new AiError("Reunión no encontrada.",404);
+  if(typeof id!=="string"||!/^[a-zA-Z0-9_-]{1,100}$/.test(id))throw new AiError("Recurso de análisis no válido.",400);
+  const state=await getWorkspaceState(userId),item=state.knowledge.find(item=>item.id===id&&item.userId===userId),meeting=item&&readAnalysisResource(item),project=item&&state.projects.find(project=>project.id===item.projectId&&project.userId===userId);
+  if(!item||!meeting||!project)throw new AiError("Recurso de análisis no encontrado.",404);
   const parts=await meetingParts(userId,project.id,meetingQueryPrefix(item.id,meeting.fingerprint)),analysis=combineMeetingParts(parts);
   return {state,item,meeting,project,parts,analysis};
 }
@@ -49,7 +49,7 @@ export async function POST(request:Request) {
     async function draft(id:unknown) {
       if(!uuid(id))throw new AiError("Identificador de borrador no válido.",400);
       const run=await findAiRun(userId,id);
-      if(!run||run.scope!==c.project.id||run.kind!=="meeting_revision"||!run.query.startsWith(prefix)||run.status!=="completed")throw new AiError("Borrador no encontrado en esta reunión.",404);
+      if(!run||run.scope!==c.project.id||run.kind!=="meeting_revision"||!run.query.startsWith(prefix)||run.status!=="completed")throw new AiError("Borrador no encontrado en este recurso.",404);
       const saved=JSON.parse(run.result) as MeetingRevision;
       if(saved.version!==1||saved.id!==id||saved.meetingId!==c.item.id||saved.fingerprint!==c.meeting.fingerprint||saved.baseFindingId!==original!.id||saved.baseFindingHash!==baseFindingHash||saved.finding.quote!==original!.quote)throw new AiError("La corrección no coincide con el hallazgo actual.",409);
       return saved;
@@ -80,7 +80,7 @@ export async function POST(request:Request) {
       // of silently resetting its scope/date when correcting another detail.
       if(data&&typeof data==="object")current={...original,kind:Object.hasOwn(FINDING_LABELS,payload.findingKind)?payload.findingKind:original.kind,title:String(data.title??proposal.title),description:String(data.description??original.description),date:data.deadline??null,priority:Number(data.priority??original.priority),urgency:Number(data.urgency??original.urgency),estimatedMinutes:Number(data.estimatedMinutes??original.estimatedMinutes)} as MeetingFinding;
     }
-    const output=await requestMeetingRevision(original,current,instruction,{title:c.item.title,date:c.meeting.date,project:c.project.name});
+    const output=await requestMeetingRevision(original,current,instruction,{title:c.item.title,date:c.meeting.date,resourceKind:c.item.itemType === "project_context" ? "project_context" : "meeting",project:c.project.name});
     const result:MeetingRevision={version:1,id:body.requestId,meetingId:c.item.id,fingerprint:c.meeting.fingerprint,contentHash:hash,baseFindingId:original.id,baseFindingHash,instruction,createdAt:new Date().toISOString(),proposalSnapshotHash:proposal?await findingHashSnapshot(proposal):null,finding:output.finding};
     await finishAiRun(userId,body.requestId,result,output.usage?.input_tokens,output.usage?.output_tokens);reserved=undefined;
     return json({draft:result});

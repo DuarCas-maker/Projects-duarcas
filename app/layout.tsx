@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import "./project-os.css";
+import "./notebook.css";
 
 export const metadata: Metadata = {
   title: "Project OS · Centro de mando personal",

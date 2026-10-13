@@ -2,7 +2,8 @@ import { buildCoreCommand, CoreValidationError, databaseRow, type CoreChange, ty
 import { bogotaDay, dayOf, planDay } from "./daily-engine";
 import type { Workspace } from "./workspace-types";
 import { existingMeetingTask, FINDING_LABELS, type FindingKind } from "./meeting-analysis";
-import { readMeeting } from "./meetings";
+import { readMeeting, readProjectContext } from "./meetings";
+import { buildNotebookReview } from "./notebook";
 
 export const DAILY_ACTIONS = new Set(["create_inbox", "create_task_suggestion", "edit_suggestion", "suggestion_status", "generate_plan", "create_calendar", "update_calendar", "approve_calendar", "cancel_calendar"]);
 const fail = (message: string, status = 400): never => { throw new CoreValidationError(message, status); };
@@ -49,14 +50,19 @@ export function buildDailyCommand(state: Workspace, userId: string, action: stri
     projectId = project(payload.projectId ?? previous.projectId).id; id = previous.id;
     let stored: Row; try { stored = JSON.parse(previous.payload); } catch { stored = {}; }
     if (!stored || typeof stored !== "object" || Array.isArray(stored)) stored = {};
+    if (stored.source === "notebook") return buildNotebookReview(state, userId, action, payload, commandId, now);
     const fromMeeting=typeof stored.meetingId==="string";
+    const fromContext=typeof stored.contextId==="string";
+    if(fromMeeting && fromContext) fail("La propuesta tiene más de una fuente de origen.",409);
     if(fromMeeting && (projectId!==previous.projectId || !state.knowledge.some(item=>item.id===stored.meetingId&&item.projectId===projectId&&readMeeting(item)?.fingerprint===stored.meetingFingerprint))) fail("La propuesta debe conservar su reunión y proyecto de origen.",409);
-    const recordFinding=fromMeeting && stored.action==="record_meeting_finding" && typeof stored.findingKind==="string" && Object.hasOwn(FINDING_LABELS,stored.findingKind) && stored.findingKind!=="task";
+    if(fromContext && (projectId!==previous.projectId || !state.knowledge.some(item=>item.id===stored.contextId&&item.projectId===projectId&&item.userId===userId&&readProjectContext(item)?.fingerprint===stored.contextFingerprint))) fail("La propuesta debe conservar su archivo de contexto y proyecto de origen.",409);
+    const recordAction=fromContext ? "record_context_finding" : "record_meeting_finding";
+    const recordFinding=(fromMeeting||fromContext) && stored.action===recordAction && typeof stored.findingKind==="string" && Object.hasOwn(FINDING_LABELS,stored.findingKind) && stored.findingKind!=="task";
     if (action === "edit_suggestion") {
       const data = taskData({ ...((stored.data as Row) ?? {}), ...payload });
       if(data.deadline) date(data.deadline);
       if(!recordFinding) buildCoreCommand(state, userId, "create_task", { ...data, projectId }, uuid(), now, uuid);
-      save("ai_suggestions", { ...previous, projectId, title: data.title, suggestionType: recordFinding?previous.suggestionType:"new_task", payload: JSON.stringify({ ...stored,action: recordFinding?"record_meeting_finding":"create_task", data, source: stored.source ?? "manual", inboxId: stored.inboxId ?? null }) }, previous);
+      save("ai_suggestions", { ...previous, projectId, title: data.title, suggestionType: recordFinding?previous.suggestionType:"new_task", payload: JSON.stringify({ ...stored,action: recordFinding?recordAction:"create_task", data, source: stored.source ?? "manual", inboxId: stored.inboxId ?? null }) }, previous);
       event(projectId, "Propuesta editada", `Pendiente de aprobación: ${data.title}`, id);
     } else {
       const status = text(payload.status);
@@ -65,12 +71,12 @@ export function buildDailyCommand(state: Workspace, userId: string, action: stri
         if(recordFinding) {
           const data=taskData({title:previous.title,...((stored.data as Row)??{})});
           if(data.deadline) date(data.deadline);
-          event(projectId,`${FINDING_LABELS[stored.findingKind as FindingKind]} confirmada`,`${data.title}. ${data.description}${data.deadline?` Fecha mencionada: ${data.deadline}.`:""}\n${previous.evidence}`,stored.meetingId as string);
-          const timeline=changes.find(change=>change.table==="project_events")!;timeline.row.event_type=`meeting_${stored.findingKind}`;timeline.row.source_type="meeting";
+          event(projectId,`${FINDING_LABELS[stored.findingKind as FindingKind]} confirmada`,`${data.title}. ${data.description}${data.deadline?` Fecha mencionada: ${data.deadline}.`:""}\n${previous.evidence}`,(fromContext ? stored.contextId : stored.meetingId) as string);
+          const timeline=changes.find(change=>change.table==="project_events")!;timeline.row.event_type=`${fromContext ? "context" : "meeting"}_${stored.findingKind}`;timeline.row.source_type=fromContext ? "project_context" : "meeting";
         } else {
         if (previous.suggestionType !== "new_task") fail("Esta propuesta antigua necesita completarse. Usa Editar para definir la acción o recházala.", 409);
         const data = taskData({ title: previous.title, ...((stored.data as Row) ?? {}) });
-        if(fromMeeting && existingMeetingTask(state,projectId,data.title)) fail("Ya existe una tarea similar. Revisa la existente o rechaza esta propuesta.",409);
+        if((fromMeeting||fromContext) && existingMeetingTask(state,projectId,data.title)) fail("Ya existe una tarea similar. Revisa la existente o rechaza esta propuesta.",409);
         const command = buildCoreCommand(state, userId, "create_task", { ...data, projectId, ...(fromMeeting ? { originMeetingId: stored.meetingId } : {}) }, commandId, now, uuid);
         changes = command.changes;
         const task = changes.find((change) => change.table === "tasks")!;

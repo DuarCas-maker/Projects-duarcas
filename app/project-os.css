@@ -542,6 +542,18 @@ button { cursor: pointer; }
 .ai-analysis-dialog { max-height: 85dvh; overflow-y: auto; }
 .brain-panel { margin-top: 1.5rem; }
 .meeting-panel { margin-bottom:1.5rem; }
+.resource-tabs > [data-slot="tabs-list"] { margin-bottom:.6rem; max-width:100%; }
+.resource-tabs [data-slot="tabs-trigger"] { gap:.45rem; padding:.45rem .8rem; }
+.resource-count { border-radius:999px; padding:.05rem .4rem; background:var(--purple-soft); color:var(--brand-purple); font-size:.75rem; }
+.context-resource-intro { display:flex; align-items:flex-start; justify-content:space-between; gap:1rem; margin-bottom:.5rem; }
+.context-resource-intro > div { flex:1; min-width:0; }
+.context-resource-intro h3 { font-size:1.05rem; font-weight:650; }
+.context-resource-intro > button { flex-shrink:0; }
+.context-resource-kind { color:var(--brand-purple); font-size:.75rem; font-weight:650; }
+.context-resource-empty { display:grid; justify-items:center; gap:.5rem; text-align:center; border:1px dashed var(--line); border-radius:.9rem; padding:2rem 1rem; margin-top:1rem; color:var(--muted-copy); }
+.context-resource-empty > svg { color:var(--brand-purple); }
+.context-resource-empty h3 { color:var(--brand-black); font-weight:650; }
+@media(max-width:650px) { .context-resource-intro { flex-direction:column; } .context-resource-intro > button { width:100%; } .resource-tabs [data-slot="tabs-trigger"] { padding:.45rem .5rem; } }
 .meeting-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:1rem; margin-top:1rem; }
 .meeting-card { border:1px solid var(--line); border-radius:.9rem; padding:1.1rem; min-width:0; }
 .meeting-card-heading { display:flex; gap:.75rem; align-items:flex-start; }

@@ -3,7 +3,7 @@ import { getWorkspaceState } from "@/db/workspace";
 import { AiError, aiStatus, findAiRun, finishAiRun, failAiRun } from "@/db/ai-history";
 import { meetingParts, meetingQueryPrefix, reserveMeetingPart } from "@/db/meeting-analysis";
 import { knowledgeText } from "@/lib/brain-provider";
-import { readMeeting } from "@/lib/meetings";
+import { readAnalysisResource } from "@/lib/meetings";
 import { memoryChunks, contentHash } from "@/lib/brain-content";
 import { BrainError } from "@/lib/gbrain-client";
 import { requestMeetingAnalysis } from "@/lib/meeting-ai-provider";
@@ -24,10 +24,10 @@ const failure=(error:unknown)=>{
   return json({error:"No se pudo completar el análisis. El avance guardado se conserva; no se aplicó ningún cambio."},503);
 };
 async function context(id:unknown) {
-  if(typeof id!=="string"||!/^[a-zA-Z0-9_-]{1,100}$/.test(id)) throw new AiError("Reunión no válida.",400);
-  const userId=await currentWorkspaceId(),state=await getWorkspaceState(userId),item=state.knowledge.find(item=>item.id===id&&item.userId===userId),meeting=item&&readMeeting(item);
+  if(typeof id!=="string"||!/^[a-zA-Z0-9_-]{1,100}$/.test(id)) throw new AiError("Recurso de análisis no válido.",400);
+  const userId=await currentWorkspaceId(),state=await getWorkspaceState(userId),item=state.knowledge.find(item=>item.id===id&&item.userId===userId),meeting=item&&readAnalysisResource(item);
   const project=item&&state.projects.find(project=>project.id===item.projectId);
-  if(!item||!meeting||!project) throw new AiError("Reunión no encontrada.",404);
+  if(!item||!meeting||!project) throw new AiError("Recurso de análisis no encontrado.",404);
   const prefix=meetingQueryPrefix(item.id,meeting.fingerprint),parts=await meetingParts(userId,item.projectId,prefix);
   return {userId,state,item,meeting,project,prefix,parts};
 }
@@ -64,7 +64,7 @@ export async function POST(request:Request) {
       throw new AiError("La consulta anterior está en curso o falló. Continúa con una operación nueva; el avance se conserva.",409);
     }
     await reserveMeetingPart(c.userId,body.requestId,c.item.projectId,query);reserved={userId:c.userId,id:body.requestId};
-    const output=await requestMeetingAnalysis(chunks[index].text,{title:c.item.title,date:c.meeting.date,project:c.project.name,part:index+1,totalParts:chunks.length,existingTasks:c.state.tasks.filter(task=>task.projectId===c.item.projectId&&task.status!=="cancelled").slice(0,100).map(task=>task.title)});
+    const output=await requestMeetingAnalysis(chunks[index].text,{title:c.item.title,date:c.meeting.date,resourceKind:c.item.itemType === "project_context" ? "project_context" : "meeting",project:c.project.name,part:index+1,totalParts:chunks.length,existingTasks:c.state.tasks.filter(task=>task.projectId===c.item.projectId&&task.status!=="cancelled").slice(0,100).map(task=>task.title)});
     let validated:ReturnType<typeof validateMeetingPart>;try{validated=validateMeetingPart(output.result,chunks[index].text,index);}catch(error){console.error("meeting_analysis_invalid",error instanceof MeetingEvidenceError?error.code:"shape");throw new AiError((error as Error).message,502);}
     const result:MeetingPart={version:1,meetingId:c.item.id,fingerprint:c.meeting.fingerprint,contentHash:hash,part:index,totalParts:chunks.length,...validated};
     await finishAiRun(c.userId,body.requestId,result,output.usage?.input_tokens,output.usage?.output_tokens);reserved=undefined;

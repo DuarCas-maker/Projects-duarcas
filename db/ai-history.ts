@@ -9,7 +9,7 @@ export function aiConfig() {
   return { configured: !!env.OPENAI_API_KEY, enabled: env.PROJECT_OS_AI_CONTEXT_ENABLED === "true", model: env.OPENAI_MODEL || "gpt-4.1-mini", limit: Number.isInteger(requested) ? Math.max(1, Math.min(100, requested)) : 40 };
 }
 export async function aiStatus(userId: string, scope: string) {
-  const used = await db().prepare("SELECT COUNT(*) AS used FROM ai_runs WHERE user_id = ? AND day_key = ?").bind(userId, bogotaDay()).first<{ used: number }>();
+  const used = await db().prepare("SELECT COUNT(*) AS used FROM ai_runs WHERE user_id = ? AND day_key = ? AND kind NOT IN ('notebook_voice','notebook_voice_config')").bind(userId, bogotaDay()).first<{ used: number }>();
   const history = await db().prepare("SELECT id, query, result, created_at, kind FROM ai_runs WHERE user_id = ? AND scope = ? AND status = 'completed' AND kind = 'chat' ORDER BY created_at DESC LIMIT 12").bind(userId, scope).all<{ id: string; query: string; result: string; created_at: string; kind: string }>();
   return { ...aiConfig(), used: used?.used ?? 0, history: history.results.reverse().map((row) => { const saved = JSON.parse(row.result); return { id: row.id, query: row.query, result: saved.response as AiResult, sources:saved.sources, memory:saved.memory, createdAt: row.created_at, kind: row.kind }; }) as AiRecord[] };
 }
@@ -22,7 +22,7 @@ export async function reserveAiRun(userId: string, id: string, scope: string, ki
   if (!enabled) throw new AiError("La conexión está preparada. Falta autorizar el envío del contexto de los proyectos a OpenAI.");
   const now = new Date().toISOString(), minuteAgo = new Date(Date.now() - 60000).toISOString();
   // Reservation and both shared limits are checked in a single atomic statement.
-  const inserted = await db().prepare(`INSERT INTO ai_runs (id,user_id,scope,kind,query,status,day_key,created_at,model) SELECT ?,?,?,?,?,'pending',?,?,? WHERE (SELECT COUNT(*) FROM ai_runs WHERE user_id = ? AND day_key = ?) < ? AND (SELECT COUNT(*) FROM ai_runs WHERE user_id = ? AND created_at >= ?) < 3 ON CONFLICT(id) DO NOTHING`).bind(id, userId, scope, kind, query, bogotaDay(), now, model, userId, bogotaDay(), limit, userId, minuteAgo).run();
+  const inserted = await db().prepare(`INSERT INTO ai_runs (id,user_id,scope,kind,query,status,day_key,created_at,model) SELECT ?,?,?,?,?,'pending',?,?,? WHERE (SELECT COUNT(*) FROM ai_runs WHERE user_id = ? AND day_key = ? AND kind NOT IN ('notebook_voice','notebook_voice_config')) < ? AND (SELECT COUNT(*) FROM ai_runs WHERE user_id = ? AND created_at >= ? AND kind NOT IN ('notebook_voice','notebook_voice_config')) < 3 ON CONFLICT(id) DO NOTHING`).bind(id, userId, scope, kind, query, bogotaDay(), now, model, userId, bogotaDay(), limit, userId, minuteAgo).run();
   if (!inserted.meta.changes) throw new AiError("Límite compartido de IA: 3 consultas por minuto o el máximo diario. Espera antes de volver a consultar.", 429);
 }
 export async function finishAiRun(userId: string, id: string, result: unknown, inputTokens = 0, outputTokens = 0) {

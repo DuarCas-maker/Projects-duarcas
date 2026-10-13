@@ -3,7 +3,7 @@ import type { Workspace } from "./workspace-types";
 import type { AiResult } from "./ai-types";
 import { bogotaDay, rankTask } from "./daily-engine";
 import type { BrainMemory } from "./brain-types";
-import { readMeeting } from "./meetings";
+import { readMeeting, readProjectContext } from "./meetings";
 import { operationsFor, assignmentLabel, financeTotals } from "./project-operations";
 
 export function aiContext(state: Workspace, projectId?: string, inboxId?: string, memory: BrainMemory = {status:"not_configured",hits:[]}) {
@@ -27,6 +27,7 @@ export function aiContext(state: Workspace, projectId?: string, inboxId?: string
   add("knowledge", activeKnowledge(state).filter((item) => ids.has(item.projectId)).slice(0, 15).map(item => {
     const {userId:_,storageKey:_key,...row} = item;
     if(item.itemType==="task_resource")return {...row,sourceReference:"Recurso vigente de una tarea"};
+    if(item.itemType==="project_context") {const context=readProjectContext(item);return {...row,sourceReference:context ? `Documento de contexto${context.date ? ` · referencia ${context.date}` : " sin fecha de referencia"}` : "Ficha de contexto no disponible"};}
     if (item.itemType !== "meeting") return row;
     const meeting = readMeeting(item);
     // Keep private storage paths/hashes out of AI prompts. Actual transcript

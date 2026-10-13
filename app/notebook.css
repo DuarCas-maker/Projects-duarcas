@@ -1,0 +1,46 @@
+.notebook-compose { display: grid; gap: .8rem; }
+.notebook-compose > label { font-weight: 600; }
+.notebook-compose textarea { min-height: 220px; line-height: 1.7; resize: vertical; }
+.notebook-compose-actions, .notebook-compose-actions > div { display: flex; gap: .6rem; align-items: center; flex-wrap: wrap; }
+.notebook-compose-actions { justify-content: space-between; }
+.notebook-budget { border-top: 1px solid var(--border); padding-top: .7rem; }
+.notebook-budget summary { cursor: pointer; font-size: .85rem; }
+.notebook-budget p { color: var(--muted-foreground); font-size: .8rem; max-width: 65ch; }
+.notebook-budget form { display: flex; gap: .75rem; align-items: end; flex-wrap: wrap; }
+.notebook-budget label { display: grid; gap: .4rem; font-size: .85rem; }
+.notebook-budget input { max-width: 12rem; }
+.notebook-workspace { display: grid; grid-template-columns: minmax(200px, 260px) minmax(0, 1fr); gap: 1rem; align-items: start; }
+.notebook-history h2 { display: flex; gap: .6rem; align-items: center; font-size: 1rem; margin-bottom: .8rem; }
+.notebook-history { max-height: 600px; overflow-y: auto; }
+.notebook-history button { width: 100%; text-align: left; display: grid; gap: .4rem; padding: .85rem .65rem; border: 1px solid transparent; border-radius: .5rem; background: transparent; color: var(--foreground); }
+.notebook-history button.selected { border-color: var(--brand-purple); background: var(--muted); }
+.notebook-history button strong { font-size: .85rem; overflow-wrap: anywhere; }
+.notebook-history button small { color: var(--muted-foreground); font-size: .75rem; }
+.notebook-analysis { min-width: 0; display: grid; gap: 1rem; }
+.notebook-analysis h2 { font-size: 1rem; }
+.notebook-analysis summary { cursor: pointer; }
+.notebook-original { white-space: pre-wrap; overflow-wrap: anywhere; font-size: .9rem; padding: .8rem; background: var(--muted); border-radius: .5rem; }
+.notebook-questions { display: grid; gap: 1rem; }
+.notebook-questions h3 { font-size: .9rem; }
+.notebook-questions fieldset { border: 1px solid var(--border); padding: .8rem; border-radius: .6rem; min-width: 0; }
+.notebook-questions legend { font-weight: 600; font-size: .9rem; padding-inline: .3rem; }
+.notebook-option { display: flex; align-items: start; gap: .6rem; padding: .6rem .25rem; font-size: .85rem; cursor: pointer; }
+.notebook-option input { margin-top: .25rem; accent-color: var(--brand-purple); }
+.notebook-proposals { display: grid; gap: 1rem; }
+.notebook-proposals article, .notebook-round-history article { border-top: 1px solid var(--border); padding-block: .8rem; }
+.notebook-proposals article > strong { color: var(--brand-purple); font-size: .8rem; }
+.notebook-proposals h3 { font-size: 1rem; margin-block: .5rem; }
+.notebook-proposals p, .notebook-round-history p { font-size: .85rem; }
+.notebook-proposals blockquote { font-size: .8rem; border-left: 3px solid var(--border); padding-left: .7rem; white-space: pre-wrap; }
+.notebook-changes { display: grid; gap: .5rem; margin-block: .8rem; }
+.notebook-changes > div { display: grid; grid-template-columns: minmax(90px, 30%) minmax(0, 1fr); gap: .7rem; font-size: .8rem; }
+.notebook-changes dt { font-weight: 600; }
+.notebook-changes dd { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.notebook-before { color: var(--muted-foreground); }
+.notebook-statuses { font-size: .8rem; }
+@media (max-width: 760px) {
+  .notebook-workspace { grid-template-columns: 1fr; }
+  .notebook-history { max-height: 240px; }
+  .mobile-nav { grid-template-columns: repeat(6, 1fr); }
+  .notebook-compose-actions button { min-height: 44px; }
+}

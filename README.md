@@ -2,6 +2,28 @@
 
 Gestor personal de proyectos, tareas, reuniones, contexto y memoria. Mantiene el alojamiento actual en Sites y añade una versión Node/Next standalone para Docker.
 
+## Bloc de notas
+
+El menú **Bloc de notas** contiene una caja de texto y un historial de envíos. Escribe encabezados con el nombre o código exacto de cada proyecto, por ejemplo `Alfa:` y `Beta:`, y debajo sus pendientes. **Enviar** guarda primero el texto original en el espacio existente, vacía el editor y solicita una primera ronda de preguntas. Si falla la IA, la nota se recupera desde el historial. Las notas del bloc se separan de la captura antigua de Inbox.
+
+Cada pregunta admite varias opciones A/B/C y una respuesta D abierta. Siempre hay una primera ronda; la IA sigue preguntando si faltan detalles. Usa las respuestas, tareas, responsables, hitos, decisiones, memoria disponible y hasta seis documentos recientes de los proyectos identificados. Se muestra la cobertura y se indican los fragmentos o fuentes que no se pudieron leer. Los encabezados desconocidos requieren aclaración. El texto admite 12 000 caracteres; cada análisis puede preparar hasta 16 propuestas y cada nota admite hasta 20 rondas.
+
+Las propuestas pueden crear o actualizar tareas e hitos, modificar fechas, estados, bloqueos, resumen y próximos pasos del proyecto, o registrar decisiones. **Enviar propuestas a Aprobaciones** conserva el origen y no aplica los cambios. Allí puedes editar, aprobar o rechazar cada propuesta y ver sus campos. Si un registro cambió después del análisis, debe revisarse y guardarse antes de aprobar. Las tareas nuevas conservan criterios de finalización en su descripción. Los cambios financieros quedan fuera de este módulo. Los siguientes envíos conservan las aprobaciones anteriores; no se reescribe la nota original.
+
+**Dictar** permite grabar hasta cinco minutos, transcribir con `gpt-4o-mini-transcribe` y revisar el texto antes de enviarlo. Necesita HTTPS o localhost, permiso de micrófono y un navegador con MediaRecorder/Web Audio. La misma clave de OpenAI se usa únicamente en el servidor. Se valida la duración a partir de WAV PCM mono de 16 kHz; no se confía en una duración enviada por el cliente. El audio no se sube al almacenamiento del proyecto: se conserva temporalmente en la pantalla para reintentar o descartarlo, y el proveedor recibe el audio al transcribir.
+
+El límite mensual de dictado se configura desde el bloc (USD 0–50; 0 desactiva nuevos dictados). El valor inicial es USD 1 o `PROJECT_OS_NOTEBOOK_VOICE_MONTHLY_USD`, si está definido. El presupuesto es **estimado** usando USD 0,003/min, no un límite exacto de la factura de OpenAI. Una reserva SQL atómica evita superar ese presupuesto con solicitudes simultáneas; los intentos fallidos conservan su reserva por si el proveedor los procesó. El mes se determina en Bogotá. Los análisis usan la cuota diaria de IA existente; dictados y ajustes de presupuesto no consumen esa cuota de texto.
+
+Los originales y las aprobaciones usan las tablas operativas existentes; preguntas, respuestas, configuración y reservas de voz usan `ai_runs` en el volumen auxiliar del alojamiento. No se necesitan migraciones ni nuevas credenciales. El respaldo auxiliar existente incluye ese historial. `npm run test:notebook` verifica el flujo con almacenamiento y respuestas sintéticas, sin llamadas externas. Para revisar la interfaz con esos datos: `node --experimental-vm-modules scripts/preview-notebook-fixture.mjs` (localhost:3102).
+
+## Recursos del proyecto
+
+En Contexto → Recursos del proyecto, las pestañas **Reuniones** y **Otros archivos** separan las transcripciones/notas de los documentos de contexto. Otros archivos incluye los documentos y notas ya guardados y permite **Subir archivo de contexto** para briefs, requisitos, planes y documentación. Admite TXT/Markdown hasta 256 KiB y PDF con texto/Word .docx hasta 10 MiB; conserva y permite descargar el original. La fecha de referencia del documento es opcional: sin ella no se usa la fecha de subida para interpretar plazos relativos.
+
+Después de guardar, pulsa **Analizar y proponer tareas**. Se lee el contenido completo por fragmentos (hasta 100 páginas por PDF y 512 KiB de texto), se guarda el avance y se generan resúmenes y propuestas con citas del documento. Envía los hallazgos a Aprobaciones y aprueba las tareas que quieras crear; subir o analizar no crea tareas directamente. Comparte la configuración, cuota y correcciones de IA con las reuniones. Las propuestas conservan el documento de origen y no se vinculan como si fueran una reunión. No requiere migraciones ni nuevas credenciales.
+
+Prueba aislada del recorrido de carga, descarga, análisis de varios fragmentos, correcciones y aprobación: `npm run test:context`. Usa almacenamiento y documentos ficticios, sin llamadas externas.
+
 ## Paleta institucional
 
 Los colores base están centralizados en `app/globals.css`: negro `#000000`, blanco `#FFFFFF`, vino tinto `#722F37` y morado `#2A0D3A`. Negro/blanco organizan navegación y lectura; vino tinto identifica acciones principales y alertas, y morado resalta navegación activa, foco y contexto. Grises y tintes suaves derivados completan bordes y fondos sin añadir otra identidad visual.

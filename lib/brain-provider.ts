@@ -1,7 +1,7 @@
 import { env } from "cloudflare:workers";
 import { GBrainClient, BrainError, validateBrainConfig } from "./gbrain-client";
 import { memorySlug, memoryChunks, partRequestId, contentHash, safeMemoryText, safeSourceText, MAX_MEMORY_BYTES, selectMemoryHits } from "./brain-content";
-import { readMeeting, MAX_MEETING_TEXT_BYTES } from "./meetings";
+import { readAnalysisResource, MAX_MEETING_TEXT_BYTES } from "./meetings";
 import { addMemoryLink, memoryLink, memoryRows, setMemoryState, reserveBrainRequest, completeBrainRequest, retryBrainRequest, type MemoryRow } from "@/db/brain";
 import { getDb } from "@/db";
 import { knowledgeItems } from "@/db/schema";
@@ -32,16 +32,16 @@ export async function knowledgeText(userId: string, item: Knowledge) {
     if(item.userId!==userId||!version?.textKey)throw new BrainError("El recurso está guardado, pero su contenido aún no está preparado. Reintenta desde Archivos de la tarea.",409);
     return safeSourceText(new TextDecoder("utf-8",{fatal:true}).decode(await originalBytes(userId,item.projectId,version.textKey,512*1024)));
   }
-  if (item.itemType === "meeting") {
-    const meeting = readMeeting(item);
+  if (item.itemType === "meeting" || item.itemType === "project_context") {
+    const meeting = readAnalysisResource(item), context = item.itemType === "project_context";
     if (!meeting || item.userId !== userId) throw new BrainError("La ficha de reunión no es válida o no pertenece a este espacio.",422);
-    const sections = [`Reunión: ${item.title}\nFecha: ${meeting.date}${meeting.driveUrl ? `\nVideo de referencia (no analizado): ${meeting.driveUrl}` : ""}`];
+    const sections = [context ? `Contexto del proyecto: ${item.title}${meeting.date ? `\nFecha de referencia del documento: ${meeting.date}` : "\nSin fecha de referencia; no interpretar fechas relativas usando la fecha de subida."}` : `Reunión: ${item.title}\nFecha: ${meeting.date}${meeting.driveUrl ? `\nVideo de referencia (no analizado): ${meeting.driveUrl}` : ""}`];
     for (const file of meeting.files) {
       const max = documentFormat(file.key) === "text" ? MAX_MEETING_TEXT_BYTES : MAX_DOCUMENT_BYTES;
       const bytes = await originalBytes(userId,item.projectId,file.key,max);
       const hash = Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256",bytes as unknown as BufferSource))).map(n => n.toString(16).padStart(2,"0")).join("");
       if (hash !== file.hash) throw new BrainError("Un documento cambió respecto al original de la reunión. No se envió texto incompleto.",409);
-      sections.push(`${file.role === "transcript" ? "TRANSCRIPCIÓN COMPLETA" : "NOTAS DE LA REUNIÓN"} · ${file.name}\n\n${await extractDocumentText(file.key,bytes,true)}`);
+      sections.push(`${file.role === "context" ? "DOCUMENTO DE CONTEXTO" : file.role === "transcript" ? "TRANSCRIPCIÓN COMPLETA" : "NOTAS DE LA REUNIÓN"} · ${file.name}\n\n${await extractDocumentText(file.key,bytes,true)}`);
     }
     return safeSourceText(sections.join("\n\n"));
   }

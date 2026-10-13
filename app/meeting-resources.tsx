@@ -4,14 +4,17 @@ import { CalendarDays, Download, FileText, Plus, Video } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { MEETING_ACCEPT, driveVideoUrl } from "@/lib/meetings";
 import { orderedProjectMeetings } from "@/lib/memory-answer";
 import type { Workspace } from "@/lib/workspace-types";
 import { MeetingAnalysisPanel } from "./meeting-analysis";
+import { ProjectContextResources } from "./project-context-resources";
 
 export function MeetingResources({state,projectId,acceptState}: {state:Workspace;projectId:string;acceptState:(state:Workspace)=>void}) {
   const [open,setOpen] = useState(false), [selected,setSelected] = useState<string|null>(null), [busy,setBusy] = useState(false), [error,setError] = useState("");
+  const [tab,setTab] = useState("meetings");
   const operation = useRef<string|null>(null), formRef = useRef<HTMLFormElement>(null);
   const meetings = orderedProjectMeetings(state,state.projects.find(p=>p.id===projectId)?.userId??"",projectId);
   const current = meetings.find(({item}) => item.id === selected);
@@ -28,8 +31,11 @@ export function MeetingResources({state,projectId,acceptState}: {state:Workspace
     } catch (failure) { setError(failure instanceof Error ? failure.message : "No se pudo guardar la reunión."); }
     finally { setBusy(false); }
   };
-  return <section className="panel meeting-panel" aria-label="Reuniones del proyecto">
-    <div className="section-heading"><div><p>RECURSOS</p><h2>Reuniones</h2></div><Button size="sm" onClick={() => {setError("");setOpen(true);}}><Plus size={16}/> Nueva reunión</Button></div>
+  const fileCount = state.knowledge.filter(item => item.projectId === projectId && ["project_context","document","note"].includes(item.itemType)).length;
+  return <section className="panel meeting-panel" aria-label="Recursos del proyecto">
+    <div className="section-heading"><div><p>RECURSOS</p><h2>Recursos del proyecto</h2></div>{tab === "meetings" && <Button size="sm" onClick={() => {setError("");setOpen(true);}}><Plus size={16}/> Nueva reunión</Button>}</div>
+    <Tabs value={tab} onValueChange={value=>{setTab(value);setSelected(null);setOpen(false);}} className="resource-tabs"><TabsList aria-label="Tipo de recurso"><TabsTrigger value="meetings" disabled={busy}><CalendarDays size={16}/> Reuniones <span className="resource-count">{meetings.length}</span></TabsTrigger><TabsTrigger value="files" disabled={busy}><FileText size={16}/> Otros archivos <span className="resource-count">{fileCount}</span></TabsTrigger></TabsList>
+    <TabsContent value="meetings">
     <p className="daily-hint">Transcripción y notas juntas. El video permanece en Drive; aquí solo guardamos su enlace.</p>
     <p className="daily-hint">Para generar tareas: abre la reunión → Analizar y proponer tareas → Enviar a aprobaciones → Aprobar. Subir o indexar archivos no crea tareas automáticamente.</p>
     <div className="meeting-grid">{meetings.map(({item,meeting}) => <article className="meeting-card" key={item.id}>
@@ -57,5 +63,6 @@ export function MeetingResources({state,projectId,acceptState}: {state:Workspace
       <p className="daily-hint">La búsqueda puede responder sobre la reunión más reciente sin indexarla. Para buscar otros temas en GBrain, pulsa Procesar en las fuentes. El enlace de Drive no se analiza.</p>
       {current?.meeting && <MeetingAnalysisPanel key={current.item.id} meetingId={current.item.id} fingerprint={current.meeting.fingerprint} projectId={projectId} state={state} acceptState={acceptState}/>}
     </DialogContent></Dialog>
+    </TabsContent><TabsContent value="files"><ProjectContextResources state={state} projectId={projectId} acceptState={acceptState}/></TabsContent></Tabs>
   </section>;
 }

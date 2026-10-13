@@ -5,6 +5,7 @@ import { bogotaDay } from "@/lib/daily-engine";
 import { calendarDate, displayCalendarDate, projectMeetings, taskTiming } from "@/lib/task-timing";
 import type { Task, Workspace } from "@/lib/workspace-types";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { readProjectContext } from "@/lib/meetings";
 
 export function TaskTimingLine({ state, task }: { state: Workspace; task: Task }) {
   const [, setDay] = useState(bogotaDay);
@@ -36,8 +37,9 @@ export function ProposalTimingDetails({ state, suggestion }: { state: Workspace;
   try { payload = JSON.parse(suggestion.payload); } catch { return null; }
   const data = payload?.data as Record<string, unknown> | undefined;
   const origin = projectMeetings(state, suggestion.userId, suggestion.projectId ?? "").find(entry => entry.item.id === payload?.meetingId && entry.meeting.fingerprint === payload.meetingFingerprint);
+  const context = state.knowledge.find(item => item.id === payload?.contextId && item.userId === suggestion.userId && item.projectId === suggestion.projectId && readProjectContext(item)?.fingerprint === payload.contextFingerprint);
   return <div className="task-timing">
-    <span>{origin ? `Reunión de origen: ${displayCalendarDate(origin.meeting.date)} · ${origin.item.title}` : "Sin reunión vinculada"}</span>
+    <span>{context ? `Documento de contexto: ${context.title}` : origin ? `Reunión de origen: ${displayCalendarDate(origin.meeting.date)} · ${origin.item.title}` : "Sin reunión vinculada"}</span>
     <span className="task-tentative">{calendarDate(data?.tentativeDeliveryDate) ? `Entrega tentativa: ${displayCalendarDate(data.tentativeDeliveryDate)} · no es un vencimiento` : "Sin entrega tentativa"}</span>
     {calendarDate(data?.deadline) && <span>Fecha límite confirmada: {displayCalendarDate(data.deadline)}</span>}
   </div>;

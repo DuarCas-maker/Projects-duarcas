@@ -1,6 +1,6 @@
 import { activeKnowledge } from "./task-attachments";
 import type { Workspace } from "./workspace-types";
-import { readMeeting } from "./meetings";
+import { readAnalysisResource } from "./meetings";
 import { contentHash } from "./brain-content";
 import { operationsFor, assignmentLabel } from "./project-operations";
 
@@ -34,7 +34,7 @@ export function searchRecords(state:Workspace,query:string):SearchResult[] {
   });
   state.milestones.forEach(m=>add({id:m.id,type:"Hito",projectId:m.projectId,label:m.name,tab:"milestones"},[m.name,m.description,m.status].join("\n")));
   state.events.forEach(e=>add({id:e.id,type:"Historial",projectId:e.projectId,label:e.title,tab:"timeline"},`${e.title}\n${e.description}`));
-  activeKnowledge(state).forEach(k=>{const meeting=readMeeting(k);add({id:k.id,type:meeting ? "Reunión" : "Contexto",projectId:k.projectId,label:k.title,tab:"knowledge",knowledgeId:k.id},[k.title,k.summary,meeting ? meeting.files.map(f=>f.name).join("\n") : k.itemType==="task_resource"?null:k.sourceReference].filter(Boolean).join("\n"));});
+  activeKnowledge(state).forEach(k=>{const resource=readAnalysisResource(k);add({id:k.id,type:k.itemType === "meeting" ? "Reunión" : "Contexto",projectId:k.projectId,label:k.title,tab:"knowledge",knowledgeId:k.id},[k.title,k.summary,resource ? resource.files.map(f=>f.name).join("\n") : k.itemType==="task_resource"?null:k.sourceReference].filter(Boolean).join("\n"));});
   state.inbox.forEach(i=>add({id:i.id,type:"Inbox",projectId:i.detectedProjectId && projectIds.has(i.detectedProjectId) ? i.detectedProjectId : null,label:i.content.slice(0,100),tab:"overview"},i.content));
   state.suggestions.forEach(s=>{if(!s.projectId)return;add({id:s.id,type:s.status==="pending" ? "Propuesta pendiente" : "Propuesta revisada",projectId:s.projectId,label:s.title,tab:"overview"},[s.title,s.reason,s.evidence,s.impact].join("\n"));});
   return matches;

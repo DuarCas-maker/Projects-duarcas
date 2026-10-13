@@ -15,15 +15,16 @@ export async function buildRevisionProposal(state:Workspace,userId:string,origin
   const plan:{id:string;projectId:string;changes:CoreChange[]}=buildMeetingProposal(state,userId,revision.meetingId,revision.finding,id);
   const change=plan.changes.find(change=>change.table==="ai_suggestions")!;
   const payload=JSON.parse(change.row.payload as string);
+  const context=typeof payload.contextId === "string";
   change.row.payload=JSON.stringify({...payload,originalFinding:original,revision:{id:revision.id,instruction:revision.instruction,createdAt:revision.createdAt}});
-  change.row.reason="Propuesta corregida con IA según tu instrucción; los cambios añadidos no son acuerdos confirmados por la reunión. Revisa antes de aprobar.";
+  change.row.reason=context ? "Propuesta corregida con IA según tu instrucción; los cambios añadidos no son hechos confirmados por el documento. Revisa antes de aprobar." : "Propuesta corregida con IA según tu instrucción; los cambios añadidos no son acuerdos confirmados por la reunión. Revisa antes de aprobar.";
   change.row.evidence=`${change.row.evidence}\nCorrección solicitada por el usuario: ${revision.instruction}`;
   if(previous) {change.kind="update";change.expected=databaseRow(previous);change.row.created_at=previous.createdAt;}
   // Stable proposal identity prevents another task when the title/type changes.
   // The event ID is revision-specific so retrying never duplicates history.
   const event=plan.changes.find(change=>change.table==="project_events")!;
   event.row.id=`meeting-revision-${revision.id}`;event.row.title=previous?"Propuesta corregida y reenviada a revisión":"Corrección enviada a revisión";
-  event.row.source_type="meeting";event.row.source_id=revision.meetingId;
+  event.row.source_type=context ? "project_context" : "meeting";event.row.source_id=revision.meetingId;
   return plan;
 }
 export const findingHashSnapshot=(snapshot:Workspace["suggestions"][number])=>contentHash(JSON.stringify(snapshot));
