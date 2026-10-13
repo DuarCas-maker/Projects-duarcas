@@ -1,6 +1,6 @@
 // Isolated browser QA. All records are synthetic; no env files, credentials or upstream APIs.
 import { build } from 'esbuild';
-import { readFile, writeFile, mkdir, readdir } from 'node:fs/promises';
+import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { join } from 'node:path';
@@ -27,9 +27,10 @@ task(design,'Ajustar las piezas para redes',-3);task(design,'Entregar los archiv
 task(website,'Corregir la navegación móvil',-7,'in_progress');task(website,'Confirmar los textos con el cliente',-2,'blocked',{blockingReason:'Pendiente de aprobación del cliente'});task(website,'Validar el formulario de contacto',1);task(website,'Preparar la entrega técnica',5);task(content,'Escribir el guion de lanzamiento',3);task(content,'Definir el calendario editorial',7);task(noDates,'Organizar hallazgos de investigación',null);
 const operations=api.operationsFor(state,design);operations.people=[{id:'fixture-self',name:'Yo',email:'',role:'Dirección',active:true,isSelf:true},{id:'fixture-colleague',name:'Ana',email:'',role:'Diseño',active:true,isSelf:false}];operations.taskDetails[state.tasks.find(t=>t.title==='Preparar la guía de uso').id]={primaryId:'fixture-colleague',collaboratorIds:[],plannedStart:null,plannedEnd:null,columnId:null};state.operations=state.operations.map(r=>r.projectId===design?{...r,data:JSON.stringify(operations)}:r);
 await build({stdin:{contents:`import React from 'react'; import {createRoot} from 'react-dom/client'; import {ProjectOS} from './app/project-os'; createRoot(document.getElementById('root')).render(<ProjectOS ownerEmail="demo@fixture.test" />);`,resolveDir:root,loader:'tsx'},bundle:true,format:'iife',platform:'browser',outfile:join(out,'app.js'),define:{'process.env.NODE_ENV':'"development"'},alias:{'@':root}});
-// Use the actual production CSS from the QA build, with current project rules.
-const cssRoot=join(root,'.next-node-qa/static/css');
-const css=(await Promise.all((await readdir(cssRoot)).filter(f=>f.endsWith('.css')).map(f=>readFile(join(cssRoot,f),'utf8')))).join('\n')+'\n'+await readFile(join(root,'app/project-os.css'),'utf8');
+// Build current styles directly so preview does not require a prior Next build.
+const { default: postcss } = await import('postcss'), { default: tailwind } = await import('@tailwindcss/postcss');
+const result = await postcss([tailwind()]).process(await readFile(join(root,'app/globals.css'),'utf8'), { from: join(root,'app/globals.css') });
+const css=result.css+'\n'+await readFile(join(root,'app/project-os.css'),'utf8')+'\n'+await readFile(join(root,'app/notebook.css'),'utf8');
 await writeFile(join(out,'style.css'),css);
 const server=createServer(async(req,res)=>{
   res.setHeader('Cache-Control','no-store');

@@ -23,6 +23,7 @@ process.env.PORT=String(port);
 process.env.HOSTNAME="127.0.0.1";
 const networkHelper=new URL("./preview-network.mjs",import.meta.url).href;
 process.env.NODE_OPTIONS=`${process.env.NODE_OPTIONS||""} --import=${networkHelper}`.trim();
+await import(networkHelper);
 const dist=process.env.PROJECT_OS_NODE_DIST_DIR===".next-node-qa"?".next-node-qa":".next-node";
 const standalone=join(root,dist,"standalone");
 if(!existsSync(join(standalone,"server.js")))throw new Error("Run node scripts/build-node.mjs first.");

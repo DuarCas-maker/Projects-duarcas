@@ -2,6 +2,12 @@
 
 Gestor personal de proyectos, tareas, reuniones, contexto y memoria. Mantiene el alojamiento actual en Sites y añade una versión Node/Next standalone para Docker.
 
+## Copiar tareas para WhatsApp
+
+En cada proyecto, abre **Tareas → Seleccionar tareas**, marca las que quieras o pulsa **Seleccionar todas** y después **Copiar**. Funciona en Lista, Kanban y Gantt. En el celular, la barra de selección permanece visible al desplazarse y tiene controles táctiles amplios. Seleccionar todas incluye las tareas del filtro de persona actual; cambiar de persona o proyecto limpia la selección.
+
+El texto contiene el nombre del proyecto y tareas numeradas separadas por líneas en blanco, con descripción, estado, responsable, colaboradores, fechas y bloqueos registrados. Conserva el orden de la lista. Pégalo en WhatsApp y envíalo. Si el navegador impide copiar automáticamente, se abre el texto para seleccionarlo y copiarlo manualmente. `npm run test:task-copy` verifica formato, aislamiento entre proyectos y alternativas del portapapeles.
+
 ## Bloc de notas
 
 El menú **Bloc de notas** contiene una caja de texto y un historial de envíos. Escribe encabezados con el nombre o código exacto de cada proyecto, por ejemplo `Alfa:` y `Beta:`, y debajo sus pendientes. **Enviar** guarda primero el texto original en el espacio existente, vacía el editor y solicita una primera ronda de preguntas. Si falla la IA, la nota se recupera desde el historial. Las notas del bloc se separan de la captura antigua de Inbox.

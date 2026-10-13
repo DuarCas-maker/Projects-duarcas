@@ -18,6 +18,7 @@
     "test:context": "node --experimental-vm-modules scripts/check-project-contexts.mjs",
     "test:notebook": "node --experimental-vm-modules scripts/check-notebook.mjs",
     "test:operations": "node scripts/check-project-operations.mjs",
+    "test:task-copy": "node scripts/check-task-copy.mjs",
     "test:sharing:http": "node scripts/check-project-sharing-http.mjs",
     "test:transfer": "node scripts/check-auxiliary-transfer.mjs",
     "test:names-only": "node scripts/check-names-only.mjs",
