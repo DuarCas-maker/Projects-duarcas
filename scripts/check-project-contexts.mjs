@@ -90,7 +90,10 @@ const persisted=workspace.suggestions.length;response=await json(api.analysis,{a
 assert.throws(()=>api.buildDailyCommand(workspace,userId,"edit_suggestion",{id:proposalId,projectId:"other-project"},crypto.randomUUID()));
 apply(api.buildDailyCommand(workspace,userId,"edit_suggestion",{id:proposalId,estimatedMinutes:60},crypto.randomUUID()));
 apply(api.buildDailyCommand(workspace,userId,"suggestion_status",{id:proposalId,status:"approved"},crypto.randomUUID()));assert.equal(workspace.tasks.length,1);assert.equal(workspace.tasks[0].estimatedMinutes,60);assert.equal(workspace.tasks[0].originMeetingId,null);assert.equal(workspace.tasks[0].sourceId,proposalId);assert.ok(workspace.tasks[0].aiGenerated);
-assert.throws(()=>api.buildDailyCommand(workspace,userId,"suggestion_status",{id:proposalId,status:"approved"},crypto.randomUUID()));assert.throws(()=>api.buildMeetingProposal(workspace,userId,id,task,crypto.randomUUID()));
+assert.throws(()=>api.buildDailyCommand(workspace,userId,"suggestion_status",{id:proposalId,status:"approved"},crypto.randomUUID()));const relatedPlan=api.buildMeetingProposal(workspace,userId,id,task,crypto.randomUUID());
+assert.ok(relatedPlan.changes.some(c=>c.table==="ai_suggestions"&&c.row.status==="pending"));
+apply(relatedPlan);const relatedId=relatedPlan.id;
+assert.throws(()=>api.buildDailyCommand(workspace,userId,"suggestion_status",{id:relatedId,status:"approved"},crypto.randomUUID()));
 
 // Non-task findings retain their source through editing and history approval.
 response=await json(api.analysis,{action:"propose",findingId:question.id});assert.equal(response.status,200);const questionId=(await response.json()).proposalId;

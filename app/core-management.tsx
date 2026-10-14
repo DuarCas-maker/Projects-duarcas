@@ -25,7 +25,7 @@ function Choice({ label, value, options, set }: { label: string; value: string; 
   return <label><span>{label}</span><Select value={value || "_none"} onValueChange={(next) => set(next ?? "_none")}><SelectTrigger aria-label={label}><SelectValue /></SelectTrigger><SelectContent>{options.map((item) => <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>)}</SelectContent></Select></label>;
 }
 
-export function CoreButton({ kind, state, save, row, projectId, title, saved }: { kind: Kind; state: Workspace; save: SaveCore; row?: Row; projectId?: string; title?: string; saved?: (id: string) => void }) {
+export function CoreButton({ kind, state, save, row, projectId, title, saved, initialParentTaskId }: { kind: Kind; state: Workspace; save: SaveCore; row?: Row; projectId?: string; title?: string; saved?: (id: string) => void; initialParentTaskId?: string }) {
   const [open, setOpen] = useState(false);
   const [values, setValues] = useState<Record<string, string>>({});
   const [dependencies, setDependencies] = useState<string[]>([]);
@@ -44,7 +44,7 @@ export function CoreButton({ kind, state, save, row, projectId, title, saved }: 
     const schedule = operationsFor(state, scheduleProject).schedule;
     setOperationsVersion(operationsRecord(state, scheduleProject)?.updatedAt ?? null);
     const originMeetingId = kind === "task" && row ? row.originMeetingId || taskMeeting(state, row as Workspace["tasks"][number])?.item.id || "" : "";
-    setValues(Object.fromEntries(Object.entries({ projectId: projectId ?? state.projects[0]?.id ?? "", shortCode: "", projectType: "Por alcance", operationalStatus: "Por iniciar", commercialStatus: "Sin definir", priority: 3, strategicPriority: 3, urgency: 3, estimatedMinutes: 30, position: state.milestones.filter((item) => item.projectId === projectId).length + 1, status: "pending", currency: "COP", totalValue: 0, paymentDate: today(), ...row, ...(kind === "task" ? { originMeetingId, primaryId: taskDetail.primaryId ?? "_none", plannedStart: taskDetail.plannedStart, plannedEnd: taskDetail.plannedEnd } : {}) }).map(([key, value]) => [key, value == null ? "" : String(value)])));
+    setValues(Object.fromEntries(Object.entries({ parentTaskId: initialParentTaskId ?? "", projectId: projectId ?? state.projects[0]?.id ?? "", shortCode: "", projectType: "Por alcance", operationalStatus: "Por iniciar", commercialStatus: "Sin definir", priority: 3, strategicPriority: 3, urgency: 3, estimatedMinutes: 30, position: state.milestones.filter((item) => item.projectId === projectId).length + 1, status: "pending", currency: "COP", totalValue: 0, paymentDate: today(), ...row, ...(kind === "task" ? { originMeetingId, primaryId: taskDetail.primaryId ?? "_none", plannedStart: taskDetail.plannedStart, plannedEnd: taskDetail.plannedEnd } : {}) }).map(([key, value]) => [key, value == null ? "" : String(value)])));
     setDependencies(state.dependencies.filter((edge) => edge.taskId === row?.id).map((edge) => edge.dependsOnTaskId));
     if (kind === "project") setValues(current => ({ ...current, projectPlannedStart: schedule?.plannedStart ?? "", projectActualStart: schedule?.actualStart ?? "" }));
     setCommandId(crypto.randomUUID()); setError(""); setOpen(true);
@@ -59,7 +59,7 @@ export function CoreButton({ kind, state, save, row, projectId, title, saved }: 
     setSaving(true); setError("");
     let action = ""; let payload: Row = {};
     if (kind === "project") { action = edit ? "update_project" : "create_project"; payload = { ...values, operationsUpdatedAt: operationsVersion, ...(edit ? { id: row!.id } : {}) }; }
-    if (kind === "task") { action = edit ? "update_task" : "create_task"; payload = { ...values, ...(edit ? { id: row!.id } : {}), milestoneId: values.milestoneId === "_none" ? "" : values.milestoneId ?? "", primaryId: values.primaryId === "_none" ? "" : values.primaryId ?? "", collaboratorIds: collaborators, operationsUpdatedAt: operationsVersion, dependsOnTaskIds: dependencies }; }
+    if (kind === "task") { action = edit ? "update_task" : "create_task"; payload = { ...values, ...(edit ? { id: row!.id } : {}), parentTaskId: values.parentTaskId === "_none" ? null : values.parentTaskId || null, milestoneId: values.milestoneId === "_none" ? "" : values.milestoneId ?? "", primaryId: values.primaryId === "_none" ? "" : values.primaryId ?? "", collaboratorIds: collaborators, operationsUpdatedAt: operationsVersion, dependsOnTaskIds: dependencies }; }
     if (kind === "milestone") { action = edit ? "update_milestone" : "create_milestone"; payload = { ...values, ...(edit ? { id: row!.id } : {}) }; }
     if (kind === "financial") { action = "update_financials"; payload = { projectId, totalValue: values.totalValue, currency: values.currency, paymentStructure: values.paymentStructure, notes: values.notes }; }
     if (kind === "payment") { action = "record_payment"; payload = { projectId, amount: values.amount, paymentDate: values.paymentDate, reference: values.reference }; }
@@ -80,7 +80,8 @@ export function CoreButton({ kind, state, save, row, projectId, title, saved }: 
       {area("currentSummary", "Estado actual")}{area("nextStepSummary", "Siguiente acción")}{input("blockedReason", "Bloqueador del proyecto")}
     </>}
     {kind === "task" && <>
-      {!edit && <Choice label="Proyecto" value={values.projectId} options={state.projects.map((item) => ({ value: item.id, label: item.name }))} set={(value) => { set("projectId", value); set("milestoneId", "_none"); set("originMeetingId", ""); set("primaryId", "_none"); setDependencies([]); setCollaborators([]); setOperationsVersion(operationsRecord(state, value)?.updatedAt ?? null); }} />}
+      {!edit && <Choice label="Proyecto" value={values.projectId} options={state.projects.map((item) => ({ value: item.id, label: item.name }))} set={(value) => { set("projectId", value); set("parentTaskId", "_none"); set("milestoneId", "_none"); set("originMeetingId", ""); set("primaryId", "_none"); setDependencies([]); setCollaborators([]); setOperationsVersion(operationsRecord(state, value)?.updatedAt ?? null); }} />}
+      <Choice label="Tarea principal" value={values.parentTaskId || "_none"} options={[{ value: "_none", label: "Tarea independiente" }, ...projectTasks.filter(t => !t.parentTaskId && t.sourceType !== "task_merge" && !state.tasks.some(child => child.parentTaskId === row?.id)).map(t => ({value:t.id,label:t.title}))]} set={value => set("parentTaskId",value)} />
       {input("title", "Título de la tarea", "text", true, 180)}{area("description", "Descripción y criterios de aceptación")}
       <div className="core-form-row">{choice("status", "Estado de la tarea", TASK_STATUSES)}<Choice label="Hito" value={values.milestoneId} options={[{ value: "_none", label: "Sin hito" }, ...state.milestones.filter((item) => item.projectId === values.projectId).map((item) => ({ value: item.id, label: item.name }))]} set={(value) => set("milestoneId", value)} /></div>
       <div className="core-form-row">{rating("priority", "Prioridad de tarea (1–5)")}{rating("urgency", "Urgencia (1–5)")}</div>
@@ -105,7 +106,8 @@ export function CoreButton({ kind, state, save, row, projectId, title, saved }: 
 export function MilestonesPanel({ state, projectId, save }: { state: Workspace; projectId: string; save: SaveCore }) {
   const milestones = state.milestones.filter((item) => item.projectId === projectId);
   return <section className="panel core-panel"><div className="section-heading"><div><p>ENTREGABLES</p><h2>Hitos del proyecto</h2></div><CoreButton kind="milestone" state={state} projectId={projectId} save={save} /></div>{milestones.length ? milestones.map((item) => {
-    const tasks = state.tasks.filter((task) => task.milestoneId === item.id);
+    const parents=new Set(state.tasks.filter(t=>t.sourceType!=="task_merge").map(t=>t.parentTaskId));
+    const tasks = state.tasks.filter((task) => task.milestoneId === item.id && task.sourceType!=="task_merge" && !parents.has(task.id));
     return <article className="core-milestone" key={item.id}><span className="core-order">{item.position}</span><div><h3>{item.name}</h3><p>{item.description}</p><small>{labels[item.status]} · {tasks.filter((task) => task.status === "completed").length}/{tasks.length} tareas completadas{item.targetDate ? ` · Fecha: ${item.targetDate}` : ""}</small></div><CoreButton kind="milestone" row={item} state={state} projectId={projectId} save={save} title="Editar hito" /></article>;
   }) : <p className="core-empty">Define el primer entregable y después vincula sus tareas.</p>}</section>;
 }

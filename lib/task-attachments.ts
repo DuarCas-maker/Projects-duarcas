@@ -1,3 +1,4 @@
+import { taskSourceIds } from "./task-structure";
 import type { Workspace } from "./workspace-types";
 
 export const TASK_ATTACHMENT_PREFIX = "project-os:task-attachment:v1:";
@@ -40,5 +41,6 @@ export function activeKnowledge(state:Workspace):Knowledge[] {
   });
 }
 export function taskAttachments(state:Workspace,taskId:string) {
-  return state.knowledge.flatMap(item=>{const attachment=readTaskAttachment(item);return attachment?.taskId===taskId?[{item,attachment}]:[];});
+  const ids=taskSourceIds(state,taskId);
+  return state.knowledge.flatMap(item=>{const attachment=readTaskAttachment(item);return attachment && ids.has(attachment.taskId)?[{item,attachment}]:[];});
 }

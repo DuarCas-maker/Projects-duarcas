@@ -67,7 +67,8 @@ assert.throws(()=>buildDailyCommand(state,userId,"edit_suggestion",{id:taskId,pr
 act("edit_suggestion",{id:taskId,description:"Descripción revisada",estimatedMinutes:45});assert.equal(JSON.parse(state.suggestions.find(row=>row.id===taskId).payload).findingKind,"task");
 act("suggestion_status",{id:taskId,status:"approved"});assert.equal(state.tasks.length,1);assert.equal(state.tasks[0].sourceId,taskId);assert.ok(state.tasks[0].aiGenerated);assert.equal(state.tasks[0].estimatedMinutes,45);
 assert.throws(()=>buildDailyCommand(state,userId,"suggestion_status",{id:taskId,status:"approved"},crypto.randomUUID()));
-assert.throws(()=>buildMeetingProposal(state,userId,meetingId,{...task,title:"PREPARAR informe de múestra!"},crypto.randomUUID()));
+const related=buildMeetingProposal(state,userId,meetingId,{...task,title:"PREPARAR informe de múestra!"},crypto.randomUUID());apply(related);
+assert.throws(()=>buildDailyCommand(state,userId,"suggestion_status",{id:related.id,status:"approved"},crypto.randomUUID()));
 const rejected=crypto.randomUUID();apply(buildMeetingProposal(state,userId,meetingId,{...task,title:"Revisar material adicional"},rejected));act("suggestion_status",{id:rejected,status:"rejected"});assert.equal(state.tasks.length,1);
 
 const prefix=meetingQueryPrefix(meetingId,fingerprint),runId=crypto.randomUUID();

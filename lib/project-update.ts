@@ -1,3 +1,4 @@
+import { executionTasks,mergeEventText } from "./task-structure";
 import { activeKnowledge } from "./task-attachments";
 import type { Workspace } from "./workspace-types";
 import type { BrainMemory } from "./brain-types";
@@ -68,13 +69,13 @@ export function projectUpdateSnapshot(state: Workspace, projectId: string, meeti
     ? e.sourceId === meetingId && e.sourceType === "meeting" && e.eventType.startsWith("meeting_")
     : e.eventType !== "organization" && e.eventType !== "capture"));
   for (const event of [...events].sort((a,b) => b.createdAt.localeCompare(a.createdAt)).slice(0,20)) {
-    applied.push({id:event.id,title:event.title,description:event.description,type:"event"});
+    applied.push({id:event.id,title:event.title,description:mergeEventText(event),type:"event"});
   }
-  const recent = meeting ? state.events.filter(e=>e.projectId===projectId && !applied.some(row=>row.id===e.id) && ["project","task","milestone","payment","financial"].includes(e.eventType) && bogotaDay(new Date(e.eventDate))>=meeting.date).sort((a,b)=>b.createdAt.localeCompare(a.createdAt)).slice(0,20).map(e=>({id:e.id,title:e.title,description:e.description,type:"dated_history"})) : [];
+  const recent = meeting ? state.events.filter(e=>e.projectId===projectId && !applied.some(row=>row.id===e.id) && ["project","task","milestone","payment","financial"].includes(e.eventType) && bogotaDay(new Date(e.eventDate))>=meeting.date).sort((a,b)=>b.createdAt.localeCompare(a.createdAt)).slice(0,20).map(e=>({id:e.id,title:e.title,description:mergeEventText(e),type:"dated_history"})) : [];
   const pending = proposals.filter(s => s.status === "pending").map(s => ({id:s.id,title:s.title,description:s.reason,type:"proposal"}));
   const unreviewed = analysis.status === "ready" ? analysis.findings.filter(f => !reviewed.has(f.id)) : [];
   for (const finding of unreviewed) pending.push({id:`finding:${meetingId}:${finding.id}`,title:finding.title,description:`${FINDING_LABELS[finding.kind]} detectada; aún no enviada a aprobación. ${finding.description}`,type:"finding"});
-  const tasks = state.tasks.filter(t => t.projectId === projectId), open = tasks.filter(t => !["completed","cancelled"].includes(t.status));
+  const tasks = executionTasks(state.tasks).filter(t => t.projectId === projectId), open = tasks.filter(t => !["completed","cancelled"].includes(t.status));
   return { projectId, meeting: item && meeting ? {id:item.id,title:item.title,date:meeting.date,status:analysis.status,completedParts:analysis.completedParts,totalParts:analysis.totalParts} : null,
     applied, recent, pending, unreviewedCount:unreviewed.length,
     repositories:repositoryFollowup(state,project.userId,projectId),

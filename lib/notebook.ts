@@ -1,4 +1,5 @@
 import { buildCoreCommand, CoreValidationError, databaseRow, type CoreChange, type Row } from "./core-commands";
+import { proposalMatches } from "./task-matches";
 import type { Workspace } from "./workspace-types";
 import { operationsRecord } from "./project-operations";
 
@@ -12,14 +13,14 @@ export type NotebookProposal = { projectId: string; action: NotebookAction; targ
 export type NotebookResult = { summary: string; questions: NotebookQuestion[]; proposals: NotebookProposal[] };
 export type NotebookRound = { id: string; createdAt: string; answers: NotebookAnswer[]; result: NotebookResult; memory?: { status: string; warning?: string }; coverage?: string };
 export const notebookFields: Record<NotebookAction, string[]> = {
-  create_task: ["title", "description", "priority", "urgency", "estimatedMinutes", "deadline", "tentativeDeliveryDate", "primaryId", "milestoneId", "criteria"],
-  update_task: ["title", "description", "status", "priority", "urgency", "estimatedMinutes", "deadline", "tentativeDeliveryDate", "primaryId", "milestoneId", "blockingReason", "criteria"],
+  create_task: ["title", "description", "priority", "urgency", "estimatedMinutes", "deadline", "tentativeDeliveryDate", "primaryId", "milestoneId", "parentTaskId", "parentProposalTitle", "criteria"],
+  update_task: ["title", "description", "status", "priority", "urgency", "estimatedMinutes", "deadline", "tentativeDeliveryDate", "primaryId", "milestoneId", "parentTaskId", "blockingReason", "criteria"],
   create_milestone: ["name", "description", "targetDate"],
   update_milestone: ["name", "description", "targetDate", "status"],
   update_project: ["description", "currentSummary", "nextStepSummary", "operationalStatus", "priority", "targetEndDate", "blockedReason", "projectPlannedStart"],
   record_decision: ["description"],
 };
-export const notebookFieldLabels: Record<string, string> = { title: "Título", name: "Nombre", description: "Descripción", status: "Estado", priority: "Prioridad (1–5)", urgency: "Urgencia (1–5)", estimatedMinutes: "Duración en minutos", deadline: "Fecha límite", tentativeDeliveryDate: "Entrega tentativa", primaryId: "Responsable", milestoneId: "Hito", criteria: "Criterios de finalización", targetDate: "Fecha del hito", targetEndDate: "Fecha final del proyecto", blockingReason: "Motivo del bloqueo", blockedReason: "Bloqueo del proyecto", operationalStatus: "Estado del proyecto", currentSummary: "Resumen actual", nextStepSummary: "Próximos pasos", projectPlannedStart: "Inicio planificado" };
+export const notebookFieldLabels: Record<string, string> = { parentProposalTitle: "Nueva tarea principal propuesta", parentTaskId: "Tarea principal", title: "Título", name: "Nombre", description: "Descripción", status: "Estado", priority: "Prioridad (1–5)", urgency: "Urgencia (1–5)", estimatedMinutes: "Duración en minutos", deadline: "Fecha límite", tentativeDeliveryDate: "Entrega tentativa", primaryId: "Responsable", milestoneId: "Hito", criteria: "Criterios de finalización", targetDate: "Fecha del hito", targetEndDate: "Fecha final del proyecto", blockingReason: "Motivo del bloqueo", blockedReason: "Bloqueo del proyecto", operationalStatus: "Estado del proyecto", currentSummary: "Resumen actual", nextStepSummary: "Próximos pasos", projectPlannedStart: "Inicio planificado" };
 export const notebookActionLabels: Record<NotebookAction, string> = { create_task: "Crear tarea", update_task: "Actualizar tarea", create_milestone: "Crear hito", update_milestone: "Actualizar hito", update_project: "Actualizar proyecto", record_decision: "Registrar decisión" };
 function fail(message: string, status = 400): never { throw new CoreValidationError(message, status); }
 const txt = (value: unknown, max: number) => typeof value === "string" && value.trim().length > 0 && value.length <= max;
@@ -64,17 +65,23 @@ function taskDescription(state: Workspace, proposal: NotebookProposal, data: Row
     delete data.criteria;
   }
 }
-function duplicateTask(state: Workspace, proposal: NotebookProposal, data: Row) {
-  const normalize = (s: string) => s.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLocaleLowerCase("es").replace(/[^\p{L}\p{N}]+/gu, " ").trim();
-  if (proposal.action === "create_task" && state.tasks.some(t => t.projectId === proposal.projectId && !["cancelled"].includes(t.status) && normalize(t.title) === normalize(String(data.title ?? proposal.title)))) fail("Ya existe una tarea con este título. Propón actualizarla o cambia el título.", 409);
-}
-export function buildNotebookAction(state: Workspace, userId: string, proposal: NotebookProposal, commandId: string, noteId: string, now = new Date().toISOString()) {
+export function buildNotebookAction(state: Workspace, userId: string, proposal: NotebookProposal, commandId: string, noteId: string, now = new Date().toISOString(), resolveParent = false) {
   if (!NOTEBOOK_ACTIONS.includes(proposal.action) || !state.projects.some(p => p.id === proposal.projectId && p.userId === userId)) fail("Acción o proyecto de la propuesta no válido.");
   const data = notebookData(proposal);
   if (proposal.action === "create_task" && ["title", "description", "priority", "urgency", "estimatedMinutes", "criteria"].some(field => data[field] === undefined || data[field] === null || data[field] === "")) fail("La tarea necesita título, descripción, prioridad, urgencia, duración y criterios de finalización.");
   if (proposal.action.startsWith("update_") && !notebookTarget(state, proposal)) fail("El registro a actualizar no pertenece a este proyecto.", 404);
   if (!proposal.action.startsWith("update_") && proposal.targetId !== null) fail("Una acción nueva no debe tener un registro de destino.");
-  taskDescription(state, proposal, data); duplicateTask(state, proposal, data);
+  if(data.parentProposalTitle) {
+    if(proposal.action!=="create_task" || data.parentTaskId) fail("Una subtarea propuesta debe tener una sola principal.");
+    const parentTitle=String(data.parentProposalTitle);delete data.parentProposalTitle;
+    if(resolveParent) {
+      const parents=state.suggestions.filter(s=>s.projectId===proposal.projectId).filter(s=>{try{const v=JSON.parse(s.payload);return v.source==="notebook" && v.notebookId===noteId && v.proposal.action==="create_task" && String(notebookData(v.proposal).title??v.proposal.title)===parentTitle;}catch{return false;}});
+      const parent=parents.length===1 && state.tasks.find(t=>t.sourceId===parents[0].id && t.projectId===proposal.projectId && !t.parentTaskId && t.sourceType!=="task_merge");
+      if(!parent) fail("Aprueba primero la nueva tarea principal y después revisa esta subtarea.",409);
+      data.parentTaskId=parent.id;
+    }
+  }
+  taskDescription(state, proposal, data);
   if (proposal.action === "record_decision") {
     if (!txt(data.description, 2000)) fail("La decisión necesita una descripción.");
     return { id: commandId, projectId: proposal.projectId, changes: [{ table: "project_events", kind: "insert" as const, row: databaseRow({ id: commandId, userId, projectId: proposal.projectId, eventType: "decision", title: proposal.title, description: data.description, sourceType: "notebook", sourceId: noteId, eventDate: now, createdAt: now }) }] };
@@ -101,6 +108,11 @@ export function validateNotebookResult(value: unknown, state: Workspace, userId:
     const key = `${proposal.projectId}:${proposal.action}:${proposal.targetId ?? String(data.title ?? data.name ?? proposal.title).toLocaleLowerCase("es")}`;
     if (seen.has(key)) fail("La IA propuso cambios repetidos. Consolida la propuesta.", 502);
     seen.add(key);
+  }
+  for(const proposal of result.proposals) {
+    const data=notebookData(proposal);if(!data.parentProposalTitle)continue;
+    const parents=result.proposals.filter(p=>p.projectId===proposal.projectId && p.action==="create_task" && String(notebookData(p).title??p.title)===data.parentProposalTitle);
+    if(parents.length!==1 || parents[0]===proposal || notebookData(parents[0]).parentTaskId || notebookData(parents[0]).parentProposalTitle) fail("La principal propuesta debe ser única e independiente; solo se admite un nivel.",502);
   }
   return result;
 }
@@ -138,7 +150,8 @@ export function buildNotebookReview(state: Workspace, userId: string, action: st
     if (!["approved", "rejected"].includes(String(payload.status))) fail("Selecciona aprobar o rechazar.");
     if (payload.status === "approved") {
       if (JSON.stringify(notebookSnapshot(state, proposal)) !== JSON.stringify(stored.snapshot)) fail("El registro cambió desde el análisis. Revisa y guarda la propuesta antes de aprobar.", 409);
-      changes = buildNotebookAction(state, userId, proposal, commandId, note.id, now).changes;
+      if(proposal.action === "create_task") {const matches=proposalMatches(state,previous);if(matches.tasks.length||matches.proposals.length) fail("Hay trabajo relacionado. Usa Revisar coincidencias antes de crear otra tarea.",409);}
+      changes = buildNotebookAction(state, userId, proposal, commandId, note.id, now, true).changes;
       if (proposal.action === "create_task") {
         const row = changes.find(c => c.table === "tasks")!.row;
         row.source_type = "suggestion"; row.source_id = previous.id; row.ai_generated = true;

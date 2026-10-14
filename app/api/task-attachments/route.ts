@@ -1,3 +1,4 @@
+import { taskSourceIds } from "@/lib/task-structure";
 import { currentWorkspaceId,WorkspaceConfigurationError } from "@/lib/workspace-context";
 import { getWorkspaceState } from "@/db/workspace";
 import { insertAttachmentRow,compareAttachmentRow,writeTaskObject,readTaskObject } from "@/db/task-attachments";
@@ -29,12 +30,13 @@ export async function POST(request:Request) {
     const userId=await currentWorkspaceId(request);
     const bytes=await boundedDocumentBytes(new Response(request.body),MAX_TASK_FILE_BYTES+1024*1024);
     const form=await new Response(bytes as unknown as BodyInit,{headers:{"Content-Type":request.headers.get("content-type")??""}}).formData();
-    const state=await getWorkspaceState(userId),task=state.tasks.find(t=>t.id===form.get("taskId")&&t.userId===userId&&state.projects.some(p=>p.id===t.projectId&&p.userId===userId));
+    const state=await getWorkspaceState(userId);let task=state.tasks.find(t=>t.id===form.get("taskId")&&t.userId===userId&&state.projects.some(p=>p.id===t.projectId&&p.userId===userId));
     if(!task)throw new BrainError("Tarea no encontrada.",404);
     const action=String(form.get("action")??""),requestId=String(form.get("requestId")??"");
     if(!/^[0-9a-f-]{36}$/i.test(requestId))throw new BrainError("Identificador de operación no válido.",400);
-    const previous=state.knowledge.find(k=>k.id===form.get("attachmentId")&&k.userId===userId&&k.projectId===task.projectId),old=previous&&readTaskAttachment(previous);
-    if(form.has("attachmentId")&&(!previous||old?.taskId!==task.id))throw new BrainError("Recurso no encontrado en esta tarea.",404);
+    const previous=state.knowledge.find(k=>k.id===form.get("attachmentId")&&k.userId===userId&&k.projectId===task!.projectId),old=previous&&readTaskAttachment(previous);
+    if(form.has("attachmentId")&&(!previous||!old||!taskSourceIds(state,task.id).has(old.taskId)))throw new BrainError("Recurso no encontrado en esta tarea.",404);
+    if(old && old.taskId!==task.id) task=state.tasks.find(t=>t.id===old.taskId && t.userId===userId && t.projectId===task!.projectId)!;
     if(action==="publish"||action==="retry") {
       if(!previous||!old)throw new BrainError("Selecciona un recurso de la tarea.",400);
       if(!old.published){old.published=true;old.activeVersionId=old.versions.at(-1)!.id;await compareAttachmentRow(previous,{sourceReference:TASK_ATTACHMENT_PREFIX+JSON.stringify(old)});}

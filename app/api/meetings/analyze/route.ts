@@ -8,6 +8,7 @@ import { memoryChunks, contentHash } from "@/lib/brain-content";
 import { BrainError } from "@/lib/gbrain-client";
 import { requestMeetingAnalysis } from "@/lib/meeting-ai-provider";
 import { combineMeetingParts, validateMeetingPart, meetingProposalId, MeetingEvidenceError, type MeetingPart } from "@/lib/meeting-analysis";
+import { taskComparisonContext } from "@/lib/task-matches";
 import { buildMeetingProposal } from "@/lib/meeting-proposals";
 import { persistCorePlan } from "@/db/core-mutations";
 import { CoreValidationError } from "@/lib/core-commands";
@@ -64,7 +65,7 @@ export async function POST(request:Request) {
       throw new AiError("La consulta anterior está en curso o falló. Continúa con una operación nueva; el avance se conserva.",409);
     }
     await reserveMeetingPart(c.userId,body.requestId,c.item.projectId,query);reserved={userId:c.userId,id:body.requestId};
-    const output=await requestMeetingAnalysis(chunks[index].text,{title:c.item.title,date:c.meeting.date,resourceKind:c.item.itemType === "project_context" ? "project_context" : "meeting",project:c.project.name,part:index+1,totalParts:chunks.length,existingTasks:c.state.tasks.filter(task=>task.projectId===c.item.projectId&&task.status!=="cancelled").slice(0,100).map(task=>task.title)});
+    const output=await requestMeetingAnalysis(chunks[index].text,{title:c.item.title,date:c.meeting.date,resourceKind:c.item.itemType === "project_context" ? "project_context" : "meeting",project:c.project.name,part:index+1,totalParts:chunks.length,existingTasks:taskComparisonContext(c.state,c.item.projectId),previousTasks:c.parts.flatMap(p=>p.findings.filter(f=>f.kind==="task").map(f=>({title:f.title,description:f.description,date:f.date,responsibleNames:f.responsibleNames}))),pendingProposals:c.state.suggestions.filter(s=>s.projectId===c.item.projectId&&s.status==="pending").map(s=>({id:s.id,title:s.title,reason:s.reason}))});
     let validated:ReturnType<typeof validateMeetingPart>;try{validated=validateMeetingPart(output.result,chunks[index].text,index);}catch(error){console.error("meeting_analysis_invalid",error instanceof MeetingEvidenceError?error.code:"shape");throw new AiError((error as Error).message,502);}
     const result:MeetingPart={version:1,meetingId:c.item.id,fingerprint:c.meeting.fingerprint,contentHash:hash,part:index,totalParts:chunks.length,...validated};
     await finishAiRun(c.userId,body.requestId,result,output.usage?.input_tokens,output.usage?.output_tokens);reserved=undefined;

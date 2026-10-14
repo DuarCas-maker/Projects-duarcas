@@ -2,6 +2,10 @@ import type { Workspace } from "./workspace-types";
 import { taskMeeting, projectMeetings } from "./task-timing";
 import { bogotaDay } from "./daily-engine";
 import { operationsFor, operationsRecord, detailFor, type TaskDetail } from "./project-operations";
+import { finalizeTaskHierarchy } from "./task-hierarchy";
+import { isMergedTask } from "./task-structure";
+import { CoreValidationError } from "./core-validation";
+export { CoreValidationError } from "./core-validation";
 
 export const CORE_ACTIONS = new Set(["create_project", "update_project", "create_milestone", "update_milestone", "create_task", "update_task", "update_task_status", "update_financials", "record_payment"]);
 export const PROJECT_STATUSES = ["Por iniciar", "Activo", "Negociación", "Pausado", "Soporte", "Finalizado", "Cancelado", "Archivado"];
@@ -11,9 +15,6 @@ export const TASK_STATUSES = ["inbox", "pending", "ready", "in_progress", "block
 export const MILESTONE_STATUSES = ["pending", "in_progress", "blocked", "completed", "cancelled"];
 export type Row = Record<string, unknown>;
 export type CoreChange = { table: string; kind: "insert" | "update" | "delete"; row: Row; expected?: Row };
-export class CoreValidationError extends Error {
-  constructor(message: string, public status = 400) { super(message); this.name = "CoreValidationError"; }
-}
 const fail = (message: string, status = 400): never => { throw new CoreValidationError(message, status); };
 function text(value: unknown, max = 2000) { if (typeof value !== "string") return ""; const result = value.trim(); if (result.length > max) fail(`El texto supera ${max} caracteres.`); return result; }
 function required(value: unknown, label: string, max = 180) { return text(value, max) || fail(`${label} es obligatorio.`); }
@@ -79,6 +80,7 @@ export function buildCoreCommand(state: Workspace, userId: string, action: strin
     save("milestones", row, previous); eventType = "milestone"; title = previous ? "Hito actualizado" : "Hito creado"; description = previous ? describeChanges(previous, row, { name: "Hito", description: "Resultado", status: "Estado", targetDate: "Fecha", position: "Orden" }) : `${row.name} · ${status}`;
   } else if (["create_task", "update_task", "update_task_status"].includes(action)) {
     const previous = action !== "create_task" ? task(payload.id) : undefined;
+    if (previous && isMergedTask(previous)) fail("Esta tarea fue fusionada. Edita la tarea resultante.",409);
     ensureFresh(previous, payload);
     projectId = project(previous?.projectId ?? payload.projectId).id; id = previous?.id ?? uuid();
     const value = { ...previous, ...payload };
@@ -99,7 +101,7 @@ export function buildCoreCommand(state: Workspace, userId: string, action: strin
     if (["in_progress", "review", "completed"].includes(status) && dependencyIds.some((parent) => task(parent).status !== "completed")) fail("Completa las tareas de las que depende antes de avanzar.", 409);
     if (milestoneId && !["completed", "cancelled"].includes(status) && state.milestones.find((item) => item.id === milestoneId)?.status === "completed") fail("Reabre el hito antes de añadir trabajo pendiente.", 409);
     const blockingReason = status === "blocked" ? text(value.blockingReason) || "Bloqueo manual" : null;
-    const row = { id, userId, projectId, milestoneId, parentTaskId: previous?.parentTaskId ?? null, title: required(value.title, "El título"), description: text(value.description), status, priority: integer(value.priority, 3, 1, 5), urgency: integer(value.urgency, 3, 1, 5), estimatedMinutes: integer(value.estimatedMinutes, 30, 1, 10080), deadline: date(value.deadline), tentativeDeliveryDate: date(value.tentativeDeliveryDate), originMeetingId: requestedMeetingId, scheduledStart: previous?.scheduledStart ?? null, scheduledEnd: previous?.scheduledEnd ?? null, isBlocked: status === "blocked", blockingReason, sourceType: previous?.sourceType ?? "manual", sourceId: previous?.sourceId ?? null, aiGenerated: previous?.aiGenerated ?? false, approved: previous?.approved ?? true, completedAt: status === "completed" ? previous?.completedAt ?? now : null, createdAt: previous?.createdAt ?? now, updatedAt: now };
+    const row = { id, userId, projectId, milestoneId, parentTaskId: text(value.parentTaskId,100) || null, title: required(value.title, "El título"), description: text(value.description), status, priority: integer(value.priority, 3, 1, 5), urgency: integer(value.urgency, 3, 1, 5), estimatedMinutes: integer(value.estimatedMinutes, 30, 1, 10080), deadline: date(value.deadline), tentativeDeliveryDate: date(value.tentativeDeliveryDate), originMeetingId: requestedMeetingId, scheduledStart: previous?.scheduledStart ?? null, scheduledEnd: previous?.scheduledEnd ?? null, isBlocked: status === "blocked", blockingReason, sourceType: previous?.sourceType ?? "manual", sourceId: previous?.sourceId ?? null, aiGenerated: previous?.aiGenerated ?? false, approved: previous?.approved ?? true, completedAt: status === "completed" ? previous?.completedAt ?? now : null, createdAt: previous?.createdAt ?? now, updatedAt: now };
     save("tasks", row, previous);
     const operationData = operationsFor(state, projectId), priorDetail = detailFor(operationData, id);
     if (["primaryId", "collaboratorIds", "plannedStart", "plannedEnd", "columnId"].some(key => payload[key] !== undefined) || priorDetail.columnId && operationData.columns.find(c => c.id === priorDetail.columnId)?.status !== status) {
@@ -148,5 +150,5 @@ export function buildCoreCommand(state: Workspace, userId: string, action: strin
   } else fail("Acción no soportada.");
   const event = { id: commandId, userId, projectId, eventType, title, description, sourceType: "manual", sourceId: id, eventDate: now, createdAt: now };
   save("project_events", event);
-  return { id, projectId, changes };
+  return { id, projectId, changes: finalizeTaskHierarchy(state,changes,now) };
 }

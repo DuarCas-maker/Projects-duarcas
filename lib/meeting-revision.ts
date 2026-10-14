@@ -18,5 +18,5 @@ export function validateMeetingRevision(value:unknown,original:MeetingFinding):M
   if(Object.keys(row).some(key=>!fields.includes(key))||fields.some(key=>!Object.hasOwn(row,key))) throw new Error("Formato de corrección no válido.");
   const corrected={...row,quote:original.quote,confidence:original.confidence};
   const validated=validateMeetingPart({summary:"Corrección solicitada por el usuario",findings:[corrected]},original.quote,original.part).findings[0];
-  return {...validated,id:original.id};
+  return {...validated,id:original.id,...(original.proposalDiscriminator?{proposalDiscriminator:original.proposalDiscriminator}:{})};
 }

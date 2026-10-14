@@ -3,6 +3,7 @@ import { shareContext } from "@/db/project-shares";
 import { CoreValidationError, buildCoreCommand, databaseRow, type CoreChange } from "@/lib/core-commands";
 import { buildOperationsCommand, operationsChange } from "@/lib/operations-commands";
 import { sharedProjection } from "@/lib/shared-project";
+import { taskSourceIds,isMergedTask } from "@/lib/task-structure";
 import { personHasTask } from "@/lib/project-operations";
 import { persistCorePlan } from "@/db/core-mutations";
 import { writeTaskObject, readTaskObject } from "@/db/task-attachments";
@@ -20,7 +21,8 @@ export async function GET(request: Request) {
   try {
     const c = await shareContext(tokenFor(request)), params = new URL(request.url).searchParams;
     if (params.has("deliveryId")) {
-      const delivery = c.data.deliveries.find(d => d.id === params.get("deliveryId") && personHasTask(c.data, d.taskId, c.person.id));
+      const allowedSourceIds=new Set(c.state.tasks.filter(t=>t.projectId===c.project.id && !isMergedTask(t) && personHasTask(c.data,t.id,c.person.id)).flatMap(t=>[...taskSourceIds(c.state,t.id)]));
+      const delivery = c.data.deliveries.find(d => d.id === params.get("deliveryId") && allowedSourceIds.has(d.taskId));
       if (!delivery) throw new CoreValidationError("Archivo no encontrado.", 404);
       const bytes = await readTaskObject(c.share.userId, c.project.id, delivery.key, MAX_UPLOAD);
       return new Response(bytes as unknown as BodyInit, { headers: { ...headers, "Content-Type": "application/octet-stream", "Content-Disposition": `attachment; filename*=UTF-8''${encodeURIComponent(delivery.name)}` } });
@@ -51,7 +53,7 @@ export async function POST(request: Request) {
       const raw = await request.text(); if (raw.length > 6000) throw new CoreValidationError("Entrada demasiado grande.", 413); body = JSON.parse(raw);
     }
     if (!body || Array.isArray(body) || !["status", "comment", "upload"].includes(String(body.action)) || typeof body.requestId !== "string" || !/^[0-9a-f-]{36}$/i.test(body.requestId)) throw new CoreValidationError("Entrada no válida.");
-    const task = c.state.tasks.find(t => t.id === body.taskId && t.projectId === c.project.id && personHasTask(c.data, t.id, c.person.id));
+    const task = c.state.tasks.find(t => t.id === body.taskId && t.projectId === c.project.id && !isMergedTask(t) && personHasTask(c.data, t.id, c.person.id));
     if (!task) throw new CoreValidationError("Tarea no encontrada.", 404);
     const commandId = `share_${c.share.id}_${body.requestId}`;
     if (c.state.events.some(e => e.id === commandId)) return json({ ...sharedProjection(c.state, c.project.id, c.person.id), replayed: true });

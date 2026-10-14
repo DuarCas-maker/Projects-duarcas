@@ -1,4 +1,5 @@
 import { detailFor, operationsFor, STATE_LABELS } from "./project-operations";
+import { taskChildren,isMergedTask } from "./task-structure";
 import type { Workspace } from "./workspace-types";
 
 const inline = (value: string) => value.replace(/\s+/g, " ").trim();
@@ -8,7 +9,9 @@ export function formatTasksForCopy(state: Workspace, projectId: string, selected
   const project = state.projects.find(row => row.id === projectId);
   if (!project) return "";
   const ids = new Set(selectedIds);
-  const tasks = state.tasks.filter(task => task.projectId === projectId && ids.has(task.id));
+  for(const id of [...ids]) for(const child of taskChildren(state,id)) if(child.projectId===projectId)ids.add(child.id);
+  const selected = state.tasks.filter(task => task.projectId === projectId && ids.has(task.id) && !isMergedTask(task));
+  const tasks=selected.filter(t=>!t.parentTaskId||!ids.has(t.parentTaskId)).flatMap(t=>[t,...selected.filter(child=>child.parentTaskId===t.id)]);
   if (!tasks.length) return "";
   const data = operationsFor(state, projectId);
   const blocks = tasks.map((task, index) => {
@@ -18,7 +21,8 @@ export function formatTasksForCopy(state: Workspace, projectId: string, selected
       const person = data.people.find(row => row.id === id);
       return person ? [inline(person.name)] : [];
     });
-    const lines = [`${index + 1}. *${inline(task.title)}*`];
+    const lines = [`${index + 1}. ${task.parentTaskId?"↳ ":""}*${inline(task.title)}*`];
+    if(task.parentTaskId) lines.push(`   • Tarea principal: ${inline(state.tasks.find(t=>t.id===task.parentTaskId)?.title??"Sin definir")}`);
     const description = task.description.replace(/\r\n?/g, "\n").trim();
     if (description) lines.push(`   ${description.split("\n").map(line => line.trim()).join("\n   ")}`);
     lines.push(`   • Estado: ${STATE_LABELS[task.status] ?? inline(task.status)}`);

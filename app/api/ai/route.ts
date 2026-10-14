@@ -44,7 +44,7 @@ export async function POST(request: Request) {
         const commandId = index === 0 ? run.id : crypto.randomUUID();
         const plan = buildDailyCommand(state, userId, "create_task_suggestion", { ...proposal, inboxId: index === 0 ? stored.inboxId : undefined, evidence: proposal.evidenceIds.map((id) => `${id}: ${stored.sources[id] ?? "Evidencia de la consulta"}`).join("; ").slice(0, 1900) }, commandId);
         const row = plan.changes.find((change) => change.table === "ai_suggestions")!.row;
-        const payload = JSON.parse(row.payload as string); row.payload = JSON.stringify({ ...payload, source: "openai", runId: run.id }); row.confidence = proposal.confidence; row.impact = proposal.impact;
+        const payload = JSON.parse(row.payload as string); row.payload = JSON.stringify({ ...payload, source: "openai", matchedTaskIds: proposal.matchedTaskIds??[], runId: run.id }); row.confidence = proposal.confidence; row.impact = proposal.impact;
         plan.changes.filter((change) => change.table === "project_events").forEach((change) => { change.row.source_type = "openai"; });
         changes.push(...plan.changes); firstId ||= plan.id;
       });

@@ -1060,6 +1060,26 @@ input:is(:autofill, :-webkit-autofill) { -webkit-text-fill-color: var(--ink); bo
 .github-connection .repository-actions { flex-wrap:wrap; margin:12px 0; }
 .github-connect-link { display:inline-flex; align-items:center; gap:8px; padding:8px 12px; border:1px solid var(--line); border-radius:8px; background:var(--surface); color:var(--brand-wine); font-size:13px; font-weight:600; }
 .github-connect-link:focus-visible { outline:2px solid var(--brand-purple); outline-offset:3px; }
+.task-structure { display:flex; flex-wrap:wrap; align-items:center; gap:8px; padding:10px 12px; }
+.task-structure > small { flex-basis:100%; color:var(--brand-purple); }
+.task-structure details { flex-basis:100%; font-size:13px; }
+.task-structure summary { cursor:pointer; color:var(--brand-purple); }
+.task-structure article { padding:10px; margin-top:8px; background:var(--soft); border-radius:8px; }
+.task-structure article p { white-space:pre-wrap; overflow-wrap:anywhere; margin-top:6px; }
+.task-copy-item[data-subtask="true"] { margin-left:24px; border-left:3px solid var(--brand-purple); }
+.kanban-card[data-subtask="true"] { border-left:3px solid var(--brand-purple); }
+.task-merge-dialog .core-form { max-height:65vh; overflow-y:auto; padding:4px; }
+.task-merge-dialog details article { margin:10px 0; padding:12px; background:var(--soft); border-radius:8px; }
+.task-merge-dialog details article p { white-space:pre-wrap; overflow-wrap:anywhere; font-size:13px; }
+.task-merge-group { display:flex; flex-direction:column; gap:12px; padding:16px; border:1px solid var(--line); border-radius:12px; }
+.task-merge-group legend { padding:0 6px; font-weight:650; color:var(--brand-purple); }
+.task-merge-conflicts { padding:12px; background:var(--soft); border-left:3px solid var(--brand-wine); font-size:13px; }
+.task-merge-conflicts ul { list-style:disc; padding-left:20px; margin-top:8px; }
+.task-merge-confirm { display:flex!important; flex-direction:row!important; align-items:flex-start; gap:10px; padding:12px; background:var(--soft); }
+.task-merge-confirm input { margin-top:3px; flex-shrink:0; }
+.task-match-review { margin:12px 0; padding:12px; border:1px solid var(--brand-purple); border-radius:10px; font-size:13px; }
+.task-match-review p { margin-bottom:8px; }
+@media(max-width:700px) { .task-copy-item[data-subtask="true"] { margin-left:12px; } .task-merge-group { padding:12px; } .task-merge-dialog .core-form { max-height:58vh; } .task-merge-dialog [data-slot="dialog-footer"] { flex-wrap:wrap; } .task-merge-dialog [data-slot="dialog-footer"] button { min-height:44px; } }
 .github-repository-picker { display:flex; flex-direction:column; gap:8px; margin-top:16px; font-size:13px; }
 .github-repository-picker select { width:100%; min-height:42px; padding:8px 12px; border:1px solid var(--line); border-radius:9px; background:var(--surface); color:var(--ink); }
 @media(max-width:700px) { .project-payments .section-heading,.agreement-card .section-heading { flex-direction:column; align-items:flex-start; gap:12px; } .agreement-card { padding:14px; } .finance-summary { padding:13px; } .column-draft { flex-wrap:wrap; } .column-draft input { flex:1 1 100%; } .column-draft select { width:auto; flex:1; } .shared-shell { padding:16px; } .shared-task-grid { grid-template-columns:1fr; } .shared-hero { align-items:flex-start; } .shared-hero h1 { font-size:32px; } }

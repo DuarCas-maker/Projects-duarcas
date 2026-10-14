@@ -1,3 +1,4 @@
+import { mergeEventText } from "./task-structure";
 import { activeKnowledge } from "./task-attachments";
 import type { Workspace } from "./workspace-types";
 import type { AiResult } from "./ai-types";
@@ -14,8 +15,9 @@ export function aiContext(state: Workspace, projectId?: string, inboxId?: string
   const add = (type: string, rows: { id: string }[]) => rows.forEach((row) => records.push({ id: row.id, type, data: row }));
   add("project", projects.map(({ userId: _, ...row }) => row));
   add("gbrain", memory.hits.filter((hit) => ids.has(hit.projectId)).map((hit) => ({ ...hit, title: hit.sourceReference })));
-  const scoped = state.tasks.filter((item) => ids.has(item.projectId));
+  const scoped = state.tasks.filter((item) => ids.has(item.projectId) && item.sourceType!=="task_merge");
   add("task", scoped.sort((a, b) => rankTask(b, state).score - rankTask(a, state).score).slice(0, 70).map((task) => { const { userId: _, ...row } = task; return { ...row, assignment: assignmentLabel(operationsFor(state, task.projectId), task.id), priorityReason: rankTask(task, state).reason }; }));
+  add("pending_task_proposal", state.suggestions.filter(s=>s.projectId && ids.has(s.projectId) && s.status==="pending").slice(0,40).map(s=>({id:s.id,projectId:s.projectId,title:s.title,reason:s.reason})));
   add("milestone", state.milestones.filter((item) => ids.has(item.projectId)).slice(0, 30).map(({ userId: _, ...row }) => row));
   add("legacy_financial", state.financials.filter((item) => ids.has(item.projectId) && !operationsFor(state, item.projectId).agreements.some(a => a.legacy)).map(({ userId: _, ...row }) => row));
   projects.forEach(project => {
@@ -23,7 +25,7 @@ export function aiContext(state: Workspace, projectId?: string, inboxId?: string
     add("person", data.people.filter(p => p.active).map(({ id, name, role, isSelf }) => ({ id, projectId: project.id, name, role, isSelf })));
     add("current_finances", financeTotals(state, project.id).map(row => ({ id: `finance_${project.id}_${row.currency}`, projectId: project.id, ...row })));
   });
-  add("event", state.events.filter((item) => ids.has(item.projectId)).sort((a, b) => b.eventDate.localeCompare(a.eventDate)).slice(0, 35).map(({ userId: _, ...row }) => row));
+  add("event", state.events.filter((item) => ids.has(item.projectId)).sort((a, b) => b.eventDate.localeCompare(a.eventDate)).slice(0, 35).map(({ userId: _, ...row }) => ({...row,description:mergeEventText(row)})));
   add("knowledge", activeKnowledge(state).filter((item) => ids.has(item.projectId)).slice(0, 15).map(item => {
     const {userId:_,storageKey:_key,...row} = item;
     if(item.itemType==="task_resource")return {...row,sourceReference:"Recurso vigente de una tarea"};
@@ -53,6 +55,7 @@ export function validateAiResult(value: unknown, projectIds: Set<string>, source
     if (!projectIds.has(item.projectId) || !txt(item.title, 180) || !item.title.trim() || !txt(item.description, 2000) || !txt(item.reason, 2000) || !txt(item.impact, 1000) || !Array.isArray(item.evidenceIds) || !item.evidenceIds.length || !item.evidenceIds.every((id) => sources.has(id))) return fail();
     if (![item.priority, item.urgency].every((n) => Number.isInteger(n) && n >= 1 && n <= 5) || !Number.isInteger(item.estimatedMinutes) || item.estimatedMinutes < 5 || item.estimatedMinutes > 480 || !Number.isInteger(item.confidence) || item.confidence < 0 || item.confidence > 100) return fail();
     if (item.deadline !== null && (!/^\d{4}-\d{2}-\d{2}$/.test(item.deadline) || new Date(`${item.deadline}T12:00:00Z`).toISOString().slice(0, 10) !== item.deadline)) return fail();
+    if(item.matchedTaskIds !== undefined && (!Array.isArray(item.matchedTaskIds)||item.matchedTaskIds.length>5||item.matchedTaskIds.some(id=>typeof id!=="string"||!sources.has(id))))return fail();
     if (item.responsibleNames !== undefined && (!Array.isArray(item.responsibleNames) || item.responsibleNames.length > 5 || item.responsibleNames.some(name => !txt(name, 180) || !name.trim()))) return fail();
     if (sourceText && item.responsibleNames?.length) {
       const records = JSON.parse(sourceText).records as { id: string; data: unknown }[];

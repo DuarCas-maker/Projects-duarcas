@@ -1,9 +1,12 @@
 import { env } from "cloudflare:workers";
 import { isSupabaseConfigured, applySupabaseChanges } from "./supabase";
-import { buildCoreCommand, CoreValidationError, type CoreChange } from "@/lib/core-commands";
+import { operationsFor, operationsRecord } from "@/lib/project-operations";
+import { buildCoreCommand, databaseRow, CoreValidationError, type CoreChange } from "@/lib/core-commands";
 import { getWorkspaceState } from "./workspace";
 import { DAILY_ACTIONS, buildDailyCommand } from "@/lib/daily-commands";
 import { OPERATIONS_ACTIONS, buildOperationsCommand } from "@/lib/operations-commands";
+import { buildTaskMatchResolution } from "@/lib/task-match-commands";
+import { finalizeTaskHierarchy } from "@/lib/task-hierarchy";
 
 function statement(change: CoreChange, userId: string) {
   if (!env.DB) throw new Error("D1 unavailable");
@@ -19,6 +22,14 @@ function statement(change: CoreChange, userId: string) {
 }
 
 export async function persistCorePlan(userId: string, plan: { id: string; changes: CoreChange[] }, claimLegacy = true) {
+  const current=await getWorkspaceState(userId,claimLegacy),now=new Date().toISOString();
+  plan.changes = finalizeTaskHierarchy(current,plan.changes,now);
+  // Every task transaction locks its project collaboration revision, including dependency edits.
+  for(const projectId of new Set(plan.changes.filter(c=>c.table === "tasks").map(c=>String(c.row.project_id)))) {
+    if(plan.changes.some(c=>c.table === "project_operations" && c.row.project_id===projectId))continue;
+    const previous=operationsRecord(current,projectId),data=operationsFor(current,projectId);data.revision++;
+    plan.changes.push({table:"project_operations",kind:previous?"update":"insert",row:databaseRow({id:previous?.id??projectId,userId,projectId,data:JSON.stringify(data),updatedAt:now}),...(previous?{expected:{data:previous.data,updated_at:previous.updatedAt}}:{})});
+  }
   let savedId = plan.id;
   if (isSupabaseConfigured()) {
     const result = await applySupabaseChanges(userId, plan.changes);
@@ -46,6 +57,6 @@ export async function executeCoreCommand(userId: string, action: string, payload
   if (existing) return { state, id: existing.sourceId, replayed: true };
   if (action === "create_inbox" && state.inbox.some((item) => item.id === commandId)) return { state, id: commandId, replayed: true };
   const build = OPERATIONS_ACTIONS.has(action) ? buildOperationsCommand : DAILY_ACTIONS.has(action) ? buildDailyCommand : buildCoreCommand;
-  const plan = build(state, userId, action, payload, commandId);
+  const plan = action === "resolve_task_match" ? buildTaskMatchResolution(state,userId,payload,commandId) : build(state, userId, action, payload, commandId);
   return persistCorePlan(userId, plan);
 }

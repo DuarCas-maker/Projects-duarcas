@@ -2,6 +2,18 @@
 
 Gestor personal de proyectos, tareas, reuniones, contexto y memoria. Mantiene el alojamiento actual en Sites y añade una versión Node/Next standalone para Docker.
 
+## Fusionar tareas y organizar subtareas
+
+En **Tareas → Seleccionar tareas**, marca entre 2 y 20 tareas del mismo proyecto y pulsa **Fusionar**. OpenAI prepara automáticamente una propuesta editable: una tarea consolidada o una principal con subtareas. Revisa los títulos, descripciones, criterios, responsables, fechas y estados; marca la confirmación y pulsa **Aprobar y fusionar**. Analizar, editar o cancelar no modifica las tareas. La consulta utiliza la clave, el modelo y la cuota compartida existentes. Para fusionar trabajo que ya tiene subtareas, despliega sus principales y selecciona las subtareas; solo se admite un nivel.
+
+Las principales se muestran con sus subtareas plegadas en Lista, Kanban y Gantt. **Añadir subtarea** abre el formulario con la principal elegida; **Editar tarea → Tarea principal** permite organizar una tarea existente. Cada subtarea conserva seguimiento propio. Al terminar todas las subtareas activas se completa la principal; reabrir una subtarea reabre la principal. Las subtareas canceladas quedan fuera del trabajo necesario; si se cancelan todas, se cancela la principal. El avance, las recomendaciones y la planificación cuentan únicamente el trabajo de las subtareas y las tareas independientes. Gantt resume las fechas de las subtareas en la principal. Copiar una principal incluye sus subtareas con la relación indicada.
+
+La fusión conserva los originales en el historial y permite verlos desde **Fuentes y tareas originales**. Los comentarios, entregables y versiones de archivos permanecen accesibles desde la tarea resultante. Las dependencias y los bloques de calendario se vinculan al resultado; los ciclos y los cambios concurrentes bloquean la aplicación y requieren una nueva revisión. No se borran originales ni se hace una limpieza masiva automática.
+
+Los análisis de reuniones y documentos comparan acción, resultado, contexto, responsables y fechas con tareas y propuestas pendientes; incluyen el trabajo detectado en fragmentos anteriores. **Aprobaciones → Revisar coincidencias** permite actualizar una tarea existente, crear una subtarea, mantener una tarea separada o consolidar dos propuestas pendientes antes de aprobar. La similitud de palabras solo señala candidatos para revisión; no decide una fusión. El bloc puede proponer una principal nueva y subtareas asociadas: aprueba primero la principal. Los duplicados sin información nueva se omiten en la generación; las diferencias de contexto se conservan para revisión.
+
+`npm run test:task-organization` y `npm run test:task-merge:http` verifican jerarquía, fusiones, conservación de fuentes, decisiones sobre coincidencias, transacciones, aprobación, reintentos y cuotas con datos ficticios y sin consultas externas. `node scripts/preview-task-organization.mjs` abre la aplicación en localhost:3110 con datos sintéticos y una respuesta de fusión simulada; no utiliza credenciales ni tareas reales. No requiere nuevas migraciones ni credenciales.
+
 ## Copiar tareas para WhatsApp
 
 En cada proyecto, abre **Tareas → Seleccionar tareas**, marca las que quieras o pulsa **Seleccionar todas** y después **Copiar**. Funciona en Lista, Kanban y Gantt. En el celular, la barra de selección permanece visible al desplazarse y tiene controles táctiles amplios. Seleccionar todas incluye las tareas del filtro de persona actual; cambiar de persona o proyecto limpia la selección.

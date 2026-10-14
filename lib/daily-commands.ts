@@ -1,17 +1,18 @@
 import { buildCoreCommand, CoreValidationError, databaseRow, type CoreChange, type Row } from "./core-commands";
 import { bogotaDay, dayOf, planDay } from "./daily-engine";
 import type { Workspace } from "./workspace-types";
-import { existingMeetingTask, FINDING_LABELS, type FindingKind } from "./meeting-analysis";
+import { FINDING_LABELS, type FindingKind } from "./meeting-analysis";
 import { readMeeting, readProjectContext } from "./meetings";
+import { proposalMatches } from "./task-matches";
 import { buildNotebookReview } from "./notebook";
 
-export const DAILY_ACTIONS = new Set(["create_inbox", "create_task_suggestion", "edit_suggestion", "suggestion_status", "generate_plan", "create_calendar", "update_calendar", "approve_calendar", "cancel_calendar"]);
+export const DAILY_ACTIONS = new Set(["resolve_task_match", "create_inbox", "create_task_suggestion", "edit_suggestion", "suggestion_status", "generate_plan", "create_calendar", "update_calendar", "approve_calendar", "cancel_calendar"]);
 const fail = (message: string, status = 400): never => { throw new CoreValidationError(message, status); };
 function text(value: unknown, max = 2000) { if (typeof value !== "string") return ""; const result = value.trim(); if (result.length > max) fail(`El texto supera ${max} caracteres.`); return result; }
 function required(value: unknown, label: string, max = 180) { return text(value, max) || fail(`${label} es obligatorio.`); }
 function date(value: unknown) { const result = text(value, 10); if (!/^\d{4}-\d{2}-\d{2}$/.test(result) || !Number.isFinite(Date.parse(`${result}T12:00:00Z`)) || new Date(`${result}T12:00:00Z`).toISOString().slice(0, 10) !== result) fail("La fecha no es válida."); return result; }
 function time(value: unknown) { const result = text(value, 5); return /^([01]\d|2[0-3]):[0-5]\d$/.test(result) ? result : fail("El horario no es válido."); }
-function taskData(value: Row) { return { title: required(value.title, "El título"), description: text(value.description), priority: value.priority ?? 3, urgency: value.urgency ?? 3, estimatedMinutes: value.estimatedMinutes ?? 30, deadline: value.deadline || null, tentativeDeliveryDate: value.tentativeDeliveryDate ? date(value.tentativeDeliveryDate) : null, responsibleNames: Array.isArray(value.responsibleNames) ? value.responsibleNames.filter(n => typeof n === "string" && n.length <= 180).slice(0,5) : [], ...(value.primaryId !== undefined ? { primaryId: value.primaryId } : {}), ...(value.collaboratorIds !== undefined ? { collaboratorIds: value.collaboratorIds } : {}) }; }
+function taskData(value: Row) { return { title: required(value.title, "El título"), description: text(value.description), priority: value.priority ?? 3, urgency: value.urgency ?? 3, estimatedMinutes: value.estimatedMinutes ?? 30, deadline: value.deadline || null, tentativeDeliveryDate: value.tentativeDeliveryDate ? date(value.tentativeDeliveryDate) : null, responsibleNames: Array.isArray(value.responsibleNames) ? value.responsibleNames.filter(n => typeof n === "string" && n.length <= 180).slice(0,5) : [], ...(value.parentTaskId !== undefined ? { parentTaskId: value.parentTaskId } : {}), ...(value.primaryId !== undefined ? { primaryId: value.primaryId } : {}), ...(value.collaboratorIds !== undefined ? { collaboratorIds: value.collaboratorIds } : {}) }; }
 
 export function buildDailyCommand(state: Workspace, userId: string, action: string, payload: Row, commandId: string, now = new Date().toISOString(), uuid = () => crypto.randomUUID()) {
   let changes: CoreChange[] = []; let id = ""; let projectId = "";
@@ -76,7 +77,8 @@ export function buildDailyCommand(state: Workspace, userId: string, action: stri
         } else {
         if (previous.suggestionType !== "new_task") fail("Esta propuesta antigua necesita completarse. Usa Editar para definir la acción o recházala.", 409);
         const data = taskData({ title: previous.title, ...((stored.data as Row) ?? {}) });
-        if((fromMeeting||fromContext) && existingMeetingTask(state,projectId,data.title)) fail("Ya existe una tarea similar. Revisa la existente o rechaza esta propuesta.",409);
+        const matches=proposalMatches(state,previous);
+        if(matches.tasks.length||matches.proposals.length) fail("Hay tareas o propuestas relacionadas. Usa Revisar coincidencias para actualizar, añadir una subtarea o mantener separada.",409);
         const command = buildCoreCommand(state, userId, "create_task", { ...data, projectId, ...(fromMeeting ? { originMeetingId: stored.meetingId } : {}) }, commandId, now, uuid);
         changes = command.changes;
         const task = changes.find((change) => change.table === "tasks")!;

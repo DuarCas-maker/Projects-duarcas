@@ -1,3 +1,4 @@
+import { executionTasks } from "./task-structure";
 import type { Workspace, Task } from "./workspace-types";
 import { filterTaskPerson, financeTotals } from "./project-operations";
 
@@ -27,7 +28,7 @@ export function rankTask(task: Task, state: Workspace, day = bogotaDay()) {
   return { score, reason: reasons.join(" · ") };
 }
 export function eligibleTasks(state: Workspace, day = bogotaDay()) {
-  return state.tasks.filter((task) => task.approved && !task.isBlocked && !["completed", "cancelled", "inbox"].includes(task.status) && !closed.includes(state.projects.find((project) => project.id === task.projectId)?.operationalStatus ?? "Archivado"))
+  return executionTasks(state.tasks).filter((task) => task.approved && !task.isBlocked && !["completed", "cancelled", "inbox"].includes(task.status) && !closed.includes(state.projects.find((project) => project.id === task.projectId)?.operationalStatus ?? "Archivado"))
     .sort((a, b) => rankTask(b, state, day).score - rankTask(a, state, day).score || (a.deadline ?? "9999").localeCompare(b.deadline ?? "9999") || a.id.localeCompare(b.id));
 }
 export type PlanBlock = { projectId: string; taskId: string; title: string; startsAt: string; endsAt: string; reason: string };

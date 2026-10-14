@@ -1,0 +1,25 @@
+"use client";
+import { useRef,useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Dialog,DialogContent,DialogHeader,DialogTitle,DialogDescription,DialogFooter } from "@/components/ui/dialog";
+import { proposalMatches,proposalTaskData } from "@/lib/task-matches";
+import { operationsRecord,assignmentLabel,operationsFor } from "@/lib/project-operations";
+import type { Workspace } from "@/lib/workspace-types";
+import type { SaveCore } from "./core-management";
+
+export function TaskMatchReview({state,suggestion,save}:{state:Workspace;suggestion:Workspace["suggestions"][number];save:SaveCore}) {
+  const matches=proposalMatches(state,suggestion),data=proposalTaskData(suggestion);
+  const [open,setOpen]=useState(false),[mode,setMode]=useState("update"),[targetId,setTargetId]=useState(""),[description,setDescription]=useState(""),[title,setTitle]=useState(""),[busy,setBusy]=useState(false),[error,setError]=useState("");
+  const snapshot=useRef({suggestion:suggestion.payload,target:"",updatedAt:"",operations:operationsRecord(state,suggestion.projectId!)?.updatedAt??null});
+  const command=useRef(crypto.randomUUID());
+  if(!data||!matches.tasks.length&&!matches.proposals.length)return null;
+  const pick=(choice:string,id:string)=> {
+    const task=state.tasks.find(t=>t.id===id),pending=state.suggestions.find(s=>s.id===id),other=choice==="pending"?String(proposalTaskData(pending!)?.description??""):task?.description??"";
+    setMode(choice);setTargetId(id);setTitle(choice==="update"?task?.title??String(data.title):String(data.title));
+    setDescription(`${choice==="update"||choice==="pending"?`${other}\n\n`:""}${String(data.description??"")}`.slice(0,2000));
+    snapshot.current={suggestion:suggestion.payload,target:pending?.payload??"",updatedAt:task?.updatedAt??"",operations:operationsRecord(state,suggestion.projectId!)?.updatedAt??null};command.current=crypto.randomUUID();setError("");
+  };
+  return <div className="task-match-review"><p>Hay {matches.tasks.length} tareas existentes y {matches.proposals.length} propuestas pendientes que pueden estar relacionadas. Compara acción, resultado, responsables y fechas.</p><Button size="sm" variant="outline" onClick={()=>{pick(matches.tasks.length?"update":"pending",matches.tasks[0]?.id??matches.proposals[0].id);setOpen(true);}}>Revisar coincidencias</Button><Dialog open={open} onOpenChange={o=>{if(!busy)setOpen(o);}}><DialogContent className="core-dialog"><DialogHeader><DialogTitle>Resolver coincidencia</DialogTitle><DialogDescription>Elige cómo incorporar este trabajo. Los cambios se aplicarán al aprobar esta decisión.</DialogDescription></DialogHeader><div className="core-form"><label>Acción<select value={mode} onChange={e=>{const choice=e.target.value;pick(choice,choice==="pending"?matches.proposals[0]?.id??"":(choice==="subtask"?matches.tasks.find(t=>!t.parentTaskId)?.id:matches.tasks[0]?.id)??"");}}><option value="update" disabled={!matches.tasks.length}>Actualizar una tarea existente</option><option value="subtask" disabled={!matches.tasks.some(t=>!t.parentTaskId)}>Añadir como subtarea</option><option value="separate">Mantener como tarea separada</option><option value="pending" disabled={!matches.proposals.length}>Consolidar en otra propuesta pendiente</option></select></label>{mode!=="separate"&&<label>{mode==="pending"?"Propuesta pendiente":"Tarea existente"}<select value={targetId} onChange={e=>pick(mode,e.target.value)}>{mode==="pending"?matches.proposals.map(s=><option key={s.id} value={s.id}>{s.title}</option>):matches.tasks.filter(t=>mode!=="subtask"||!t.parentTaskId).map(t=><option key={t.id} value={t.id}>{t.title}</option>)}</select></label>}{mode!=="pending"&&<label>Título resultante<Input maxLength={180} value={title} onChange={e=>setTitle(e.target.value)}/></label>}<label>Descripción y criterios resultantes<Textarea maxLength={2000} value={description} onChange={e=>setDescription(e.target.value)}/></label>{state.tasks.filter(t=>t.id===targetId).map(t=><p key={t.id}>{assignmentLabel(operationsFor(state,t.projectId),t.id)} · Fecha: {t.deadline??"sin definir"}. {mode==="update"?"Se conservan las asignaciones, fechas y estado existentes.":"La subtarea tendrá seguimiento propio."}</p>)}{error&&<p className="core-error" role="alert">{error}</p>}</div><DialogFooter><Button variant="outline" disabled={busy} onClick={()=>setOpen(false)}>Cancelar</Button><Button disabled={busy||!description.trim()} onClick={async()=>{if(busy)return;setBusy(true);setError("");try{await save("resolve_task_match",{id:suggestion.id,mode,targetId,title,description,suggestionSnapshot:snapshot.current.suggestion,targetSnapshot:snapshot.current.target,targetUpdatedAt:snapshot.current.updatedAt,operationsUpdatedAt:snapshot.current.operations},command.current);setOpen(false);}catch(e){setError((e as Error).message);}finally{setBusy(false);}}}>{busy?"Guardando…":mode==="pending"?"Consolidar y dejar pendiente":"Aprobar decisión"}</Button></DialogFooter></DialogContent></Dialog></div>;
+}

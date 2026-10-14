@@ -1,3 +1,4 @@
+import { executionTasks } from "./task-structure";
 import type { Project, Task, Workspace } from "./workspace-types";
 import { operationsFor, filterTaskPerson } from "./project-operations";
 import { bogotaDay, eligibleTasks } from "./daily-engine";
@@ -12,6 +13,7 @@ export function matchesMetric(task: Task, metric: TaskMetric) {
   return metric === "total" || (metric === "completed" ? task.status === "completed" : task.status !== "completed");
 }
 export function taskCounts(tasks: Task[]) {
+  tasks = executionTasks(tasks);
   return { total: tasks.filter(t => matchesMetric(t, "total")).length, pending: tasks.filter(t => matchesMetric(t, "pending")).length, completed: tasks.filter(t => matchesMetric(t, "completed")).length };
 }
 export function projectScope(state: Workspace, includeOther: boolean) {
@@ -19,7 +21,7 @@ export function projectScope(state: Workspace, includeOther: boolean) {
 }
 export function dashboardTasks(state: Workspace, projects: Project[], person: string) {
   const ids = new Set(projects.map(p => p.id));
-  return state.tasks.filter(t => ids.has(t.projectId) && filterTaskPerson(state, t, person));
+  return executionTasks(state.tasks).filter(t => ids.has(t.projectId) && filterTaskPerson(state, t, person));
 }
 export function sortAgenda(tasks: Task[]) {
   return [...tasks].sort((a, b) => (a.deadline ?? "9999-12-31").localeCompare(b.deadline ?? "9999-12-31") || b.priority - a.priority || a.title.localeCompare(b.title, "es") || a.id.localeCompare(b.id));
@@ -35,7 +37,7 @@ export function deadlineSignal(task: Task, today = bogotaDay()) {
   return { label: days < 0 ? `${-days} ${days === -1 ? "día" : "días"} de atraso` : days === 0 ? "Vence hoy" : `${days} ${days === 1 ? "día restante" : "días restantes"}`, kind: days < 0 ? "overdue" : days === 0 ? "today" : "future", days };
 }
 export function projectProgress(state: Workspace, project: Project, today = bogotaDay()) {
-  const tasks = state.tasks.filter(t => t.projectId === project.id), counts = taskCounts(tasks);
+  const tasks = executionTasks(state.tasks).filter(t => t.projectId === project.id), counts = taskCounts(tasks);
   const cancelled = tasks.filter(t => t.status === "cancelled").length;
   const schedule = operationsFor(state, project.id).schedule;
   const plannedStart = calendarDate(schedule?.plannedStart) ? schedule.plannedStart : null;

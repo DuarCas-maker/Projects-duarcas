@@ -1,16 +1,16 @@
 import { buildDailyCommand } from "./daily-commands";
 import { CoreValidationError, databaseRow } from "./core-commands";
-import { FINDING_LABELS, existingMeetingTask, type MeetingFinding } from "./meeting-analysis";
+import { FINDING_LABELS, type MeetingFinding } from "./meeting-analysis";
 import { readAnalysisResource } from "./meetings";
 import type { Workspace } from "./workspace-types";
 
 export function buildMeetingProposal(state:Workspace,userId:string,meetingId:string,finding:MeetingFinding,commandId:string,now=new Date().toISOString()) {
   const item=state.knowledge.find(item=>item.id===meetingId&&item.userId===userId),meeting=item&&readAnalysisResource(item),context=item?.itemType==="project_context";
   if(!item||!meeting) throw new CoreValidationError("Reunión no encontrada.",404);
-  if(finding.kind==="task" && existingMeetingTask(state,item.projectId,finding.title)) throw new CoreValidationError("Ya existe una tarea similar. Revisa la tarea actual antes de crear otra.",409);
+  // Related work is sent to review, where the user chooses update, subtask or separate.
   const evidence=`${context ? "Contexto del proyecto" : "Reunión"}: ${item.title}${meeting.date ? ` · ${meeting.date}` : ""} · fragmento ${finding.part+1}\nCita verificada: «${finding.quote}»`;
   const data={title:finding.title,description:finding.description,priority:finding.priority,urgency:finding.urgency,estimatedMinutes:finding.estimatedMinutes,deadline:finding.date,responsibleNames:finding.responsibleNames??[]};
-  const marker={source:"openai",...(context ? {contextId:meetingId,contextFingerprint:meeting.fingerprint} : {meetingId,meetingFingerprint:meeting.fingerprint}),findingId:finding.id,findingKind:finding.kind};
+  const marker={source:"openai",matchedTaskIds:finding.matchedTaskIds??[],...(context ? {contextId:meetingId,contextFingerprint:meeting.fingerprint} : {meetingId,meetingFingerprint:meeting.fingerprint}),findingId:finding.id,findingKind:finding.kind};
   if(finding.kind==="task") {
     const plan=buildDailyCommand(state,userId,"create_task_suggestion",{...data,projectId:item.projectId,reason:context ? "Tarea propuesta a partir del contexto del proyecto; revisa el alcance, la fecha y la estimación antes de aprobar." : "Tarea detectada en la reunión; revisa el alcance, la fecha y la estimación antes de aprobar.",evidence},commandId,now);
     const proposal=plan.changes.find(change=>change.table==="ai_suggestions")!.row;
