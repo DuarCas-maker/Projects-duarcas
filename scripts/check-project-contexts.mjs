@@ -11,7 +11,7 @@ const sql=new DatabaseSync(":memory:");
 sql.exec(await readFile(new URL("../drizzle/0001_empty_blade.sql",import.meta.url),"utf8"));
 const DB={prepare(query){const statement=sql.prepare(query);return {bind(...args){return {async first(){return statement.get(...args);},async all(){return {results:statement.all(...args)};},async run(){return {meta:{changes:statement.run(...args).changes}};}};}};}};
 const userId="context-owner",projectId="context-project",id=crypto.randomUUID();
-const text="Objetivo: diseñar la portada de la web del proyecto.\n"+"Información de contexto ficticia, sin acciones adicionales.\n".repeat(1400)+"Requisito: preparar el informe de requisitos del proyecto para el 20 de octubre de 2026.";
+const text="Objetivo: diseñar la portada de la web del proyecto.\n```env\nOPENAI_API_KEY=\nOPENAI_DISCOVERY_MODEL=\nSUPABASE_SERVICE_ROLE_KEY=\n```\n"+"Información de contexto ficticia, sin acciones adicionales.\n".repeat(1400)+"Requisito: preparar el informe de requisitos del proyecto para el 20 de octubre de 2026.";
 const storage=new Map(),fixtureEnv={DB,OPENAI_API_KEY:"synthetic-fixture-key",PROJECT_OS_AI_CONTEXT_ENABLED:"true"};
 const workspace={projects:[{id:projectId,userId,name:"Contexto ficticio"},{id:"other-project",userId,name:"Otro proyecto"}],knowledge:[],tasks:[],suggestions:[],events:[],dependencies:[],milestones:[],financials:[],operations:[],calendar:[],inbox:[],repositories:[]};
 let uploads=0,requests=0,denied=0,indexed=0,lastBody,providerStatus=200;

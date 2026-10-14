@@ -21,7 +21,7 @@ async function load(file) {
   await module.link((specifier) => load(`../lib/${specifier.replace(/^\.\//,"")}.ts`)); await module.evaluate(); return module;
 }
 const {GBrainClient,BrainError,validateBrainConfig,parseRpc,boundedText}=(await load("../lib/gbrain-client.ts")).namespace;
-const {safeMemoryText,memorySlug,memoryMarkdown,selectMemoryHits}=(await load("../lib/brain-content.ts")).namespace;
+const {safeMemoryText,safeSourceText,memoryChunks,memorySlug,memoryMarkdown,selectMemoryHits}=(await load("../lib/brain-content.ts")).namespace;
 const client = new GBrainClient(config);
 assert.equal((await client.call("put_page",{request_id:crypto.randomUUID()})).state,"committed");
 await client.call("whoami"); assert.equal(tokenCalls,1,"Token reused until expiry");
@@ -34,6 +34,18 @@ assert.throws(()=>validateBrainConfig({...config,sourceId:"default"}));
 assert.throws(()=>parseRpc(JSON.stringify({jsonrpc:"2.0",id:"other",result:{}}),"application/json","wanted"));
 await assert.rejects(boundedText(new Response("12345"),3));
 for (const text of ["", "API_KEY=synthetic-secret-value", "sk-proj-synthetic012345678901234567890", "\x00binary", "x".repeat(50000)]) assert.throws(()=>safeMemoryText(text));
+// Empty environment templates must not borrow a value from the next line.
+for (const newline of ["\n","\r\n"]) {
+  const template=["```env","SUPABASE_SERVICE_ROLE_KEY=","OPENAI_API_KEY= \t","OPENAI_DISCOVERY_MODEL=","CLIENT_SECRET:","JWT_SECRET=","PASSWORD =","```","Nunca publicar credenciales."].join(newline);
+  assert.equal(safeMemoryText(template),template);
+  assert.equal(safeSourceText(template),template);
+  assert.ok(memoryMarkdown("Variables","Proyecto",template).includes(template));
+  const source=template+newline+"Contexto documental sin credenciales. ".repeat(2000);
+  assert.equal(memoryChunks("Variables","Proyecto",source).map(part=>part.text).join(""),source.trim());
+}
+for (const text of ["OPENAI_API_KEY = synthetic-secret-value","CLIENT_SECRET:\tsynthetic-secret-value","JWT_SECRET=synthetic-secret-value","PASSWORD = \"synthetic-password\"","SUPABASE_SERVICE_ROLE_KEY=synthetic-service-value","-----BEGIN PRIVATE KEY-----","sb_secret_synthetic_value","eyJsynthetic012345.abcdefghijklmnop.abcdefghijklmnop","OPENAI_API_KEY=\nPASSWORD=synthetic-password"]) {
+  for (const validate of [safeMemoryText,safeSourceText]) assert.throws(()=>validate(text),error=>error instanceof BrainError && error.status===422);
+}
 const a=await memorySlug("workspace-a","project-a","source-a"), b=await memorySlug("workspace-b","project-a","source-a"), c=await memorySlug("workspace-a","project-b","source-a");
 assert.notEqual(a,b);assert.notEqual(a,c); assert.match(a,/^project-os\/ws-[a-f0-9]{32}\/project-[a-f0-9]{32}\/item-[a-f0-9]{32}$/);
 assert.equal(a,await memorySlug("workspace-a","project-a","source-a"));

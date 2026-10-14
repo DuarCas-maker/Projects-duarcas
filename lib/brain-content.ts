@@ -12,7 +12,8 @@ function validatedText(text: string, max: number) {
   if (!text.trim() || new TextEncoder().encode(text).byteLength > max) throw new BrainError(`Procesa texto de hasta ${max / 1024} KiB. El archivo original no se modifica.`, 413);
   if (/[\x00-\x08\x0b\x0c\x0e-\x1f]/.test(text)) throw new BrainError("El archivo no es texto UTF-8 procesable.", 422);
   // Reject common credential formats before external embeddings/knowledge.
-  if (/sk-(?:proj-|svcacct-)?[a-zA-Z0-9_-]{20,}|-----BEGIN [A-Z ]*PRIVATE KEY-----|sb_secret_[a-zA-Z0-9_-]+|(?:API_KEY|CLIENT_SECRET|JWT_SECRET|PASSWORD|SERVICE_ROLE_KEY)\s*[:=]\s*\S{8,}|eyJ[a-zA-Z0-9_-]{12,}\.[a-zA-Z0-9_-]{12,}\.[a-zA-Z0-9_-]{12,}/i.test(text)) throw new BrainError("El texto parece contener credenciales. Retíralas antes de enviarlo a GBrain.", 422);
+  // An empty assignment must not consume documentation from the next line.
+  if (/sk-(?:proj-|svcacct-)?[a-zA-Z0-9_-]{20,}|-----BEGIN [A-Z ]*PRIVATE KEY-----|sb_secret_[a-zA-Z0-9_-]+|(?:API_KEY|CLIENT_SECRET|JWT_SECRET|PASSWORD|SERVICE_ROLE_KEY)[ \t]*[:=][ \t]*\S{8,}|eyJ[a-zA-Z0-9_-]{12,}\.[a-zA-Z0-9_-]{12,}\.[a-zA-Z0-9_-]{12,}/i.test(text)) throw new BrainError("El texto parece contener credenciales. Retíralas antes de enviarlo a GBrain.", 422);
   return text.trim();
 }
 export function safeMemoryText(text: string) { return validatedText(text,MAX_MEMORY_BYTES); }
