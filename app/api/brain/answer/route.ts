@@ -29,7 +29,7 @@ export async function POST(request:Request) {
     await reserveAiRun(userId,body.requestId,project.id,"memory_answer",operation);reserved={userId,id:body.requestId};
     const output=await requestMemoryAnswer(query,context);
     let result;try{result=validateMemoryAnswer(output.result,context.sources);}catch{throw new AiError("La respuesta no contiene citas verificables. Reintenta la pregunta; no se modificó el proyecto.",502);}
-    const record:MemoryAnswerRecord={id:body.requestId,query,policy:context.policy,result,sources:context.sources,warnings:context.warnings,latestDate:context.latestDate};
+    const record:MemoryAnswerRecord={id:body.requestId,query,policy:context.policy,result,sources:context.sources,warnings:context.warnings,latestDate:context.latestDate,sourceCoverage:context.sourceCoverage};
     await finishAiRun(userId,body.requestId,record,output.usage?.input_tokens,output.usage?.output_tokens);reserved=undefined;
     return json(record);
   } catch(error) {

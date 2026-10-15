@@ -16,6 +16,7 @@ import { CoreValidationError } from "@/lib/core-commands";
 import { persistCorePlan } from "@/db/core-mutations";
 import { SupabaseConflictError } from "@/db/supabase";
 import { repositoryFollowupContext } from "@/db/repositories";
+import { projectSourceInventory,prepareProjectSources } from "@/db/project-sources";
 
 export const dynamic="force-dynamic";
 const json=(value:unknown,status=200)=>Response.json(value,{status,headers:{"Cache-Control":"no-store"}});
@@ -38,7 +39,8 @@ async function current(projectId:unknown,meetingId:unknown) {
   const parts=meeting ? await meetingParts(userId,projectId,meetingQueryPrefix(meetingId,meeting.fingerprint)) : [];
   const analysis=combineMeetingParts(parts),snapshot=projectUpdateSnapshot(state,projectId,meetingId,analysis);
   const links=(await memoryRows(userId,projectId)).map(r=>({id:r.knowledge_id,status:r.status,hash:r.content_hash,indexedAt:r.indexed_at}));
-  const revision=await contentHash(JSON.stringify({contextVersion:3,state:projectUpdateSignature(state,projectId,meetingId),parts,links}));
+  const inventory=await projectSourceInventory(userId,state,[projectId]);
+  const revision=await contentHash(JSON.stringify({contextVersion:4,state:projectUpdateSignature(state,projectId,meetingId),parts,links,sourceRevision:inventory.revision}));
   return {userId,state,project,meetingId,analysis,snapshot,revision,query:updatePrefix(meetingId)+revision};
 }
 export async function GET(request:Request) {
@@ -55,7 +57,8 @@ export async function POST(request:Request) {
     await currentWorkspaceId(request);
     const input=await request.text();if(input.length>8000) throw new AiError("Entrada demasiado grande.",413);
     const body=JSON.parse(input) as Record<string,unknown>;if(!body||typeof body!=="object"||Array.isArray(body)) throw new AiError("Entrada no válida.",400);
-    const c=await current(body.projectId,body.meetingId??"");
+    let c=await current(body.projectId,body.meetingId??"");
+    if(body.action==="generate") {await prepareProjectSources(c.userId,c.state,[c.project.id]);c=await current(body.projectId,body.meetingId??"");}
     if (body.action==="apply") {
       if (typeof body.runId!=="string") throw new AiError("Actualización no válida.",400);
       const run=await findAiRun(c.userId,body.runId);
@@ -78,11 +81,11 @@ export async function POST(request:Request) {
     if (cached) return json({latest:cached,replayed:true});
     await reserveProjectUpdate(c.userId,body.requestId,c.project.id,c.query);reserved={userId:c.userId,id:body.requestId};
     let memory:BrainMemory;
-    try {memory=await recallMemory(c.userId,[c.project.id],`Estado, acuerdos, bloqueadores y próxima acción de ${c.project.name}${c.snapshot.meeting ? ` después de ${c.snapshot.meeting.title}` : ""}`.slice(0,1000),body.requestId,c.state);}
+    try {memory=await recallMemory(c.userId,[c.project.id],`Estado, acuerdos, bloqueadores y próxima acción de ${c.project.name}${c.snapshot.meeting ? ` después de ${c.snapshot.meeting.title}` : ""}`.slice(0,1000),body.requestId,c.state,undefined,{prepare:false});}
     catch {memory={status:"unavailable",hits:[],warning:"No se pudo consultar GBrain. La lectura usa solo registros y análisis guardados de Project OS."};}
     const repositories=await repositoryFollowupContext(c.userId,c.state,c.project.id);
     const context=projectUpdateContext(c.state,c.snapshot,c.analysis,memory,repositories),output=await requestProjectUpdate(context),result=validateProjectUpdate(output.result,context);
-    const saved={revision:c.revision,result,sources:context.labels,coverage:{included:context.sources.size,omitted:context.omittedRecords},repositories:context.repositories,memory:{status:memory.status,count:context.memoryCount,warning:memory.warning}};
+    const saved={revision:c.revision,result,sources:context.labels,sourceCoverage:context.sourceCoverage,coverage:{included:context.sources.size,omitted:context.omittedRecords},repositories:context.repositories,memory:{status:memory.status,count:context.memoryCount,warning:memory.warning}};
     await finishAiRun(c.userId,body.requestId,saved,output.usage?.input_tokens,output.usage?.output_tokens);reserved=undefined;
     return json({latest:{id:body.requestId,createdAt:new Date().toISOString(),...saved}});
   } catch(error) {if(reserved) await failAiRun(reserved.userId,reserved.id).catch(()=>undefined);return failure(error);}

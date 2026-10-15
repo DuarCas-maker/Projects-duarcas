@@ -1,7 +1,6 @@
 import type { Workspace } from "./workspace-types";
 import { aiContext } from "./ai-context";
-import { recallMemory, knowledgeText } from "@/lib/brain-provider";
-import { activeKnowledge } from "./task-attachments";
+import { recallMemory } from "@/lib/brain-provider";
 import type { NotebookAnswer, NotebookRound } from "./notebook";
 import type { BrainMemory } from "./brain-types";
 import { bogotaDay } from "./daily-engine";
@@ -27,16 +26,8 @@ export async function notebookContext(state: Workspace, userId: string, note: Wo
     catch { memory = { status: "unavailable", hits: [], warning: "No se pudo consultar la memoria. Se usaron los registros locales disponibles." }; }
   }
   const details = projectIds.map(id => JSON.parse(aiContext(state, id, note.id, memory).text));
-  const candidates = activeKnowledge(state).filter(k => selected.has(k.projectId) && ["meeting", "project_context", "document", "note"].includes(k.itemType)).sort((a, b) => (b.occurredAt ?? "").localeCompare(a.occurredAt ?? ""));
-  const documents: { id: string; projectId: string; title: string; text: string; excerpt: boolean }[] = [];
-  let size = 0, unavailable = 0;
-  for (const item of candidates.slice(0, 6)) {
-    try {
-      const original = await knowledgeText(userId, item), allowed = Math.min(16000, 64000 - size);
-      if (allowed <= 0) break;
-      documents.push({ id: item.id, projectId: item.projectId, title: item.title, text: original.slice(0, allowed), excerpt: original.length > allowed }); size += Math.min(allowed, original.length);
-    } catch { unavailable++; }
-  }
-  const coverage = `${projectIds.length} proyectos con contexto; ${documents.length} documentos consultados${documents.some(d => d.excerpt) ? " por fragmentos" : ""}; ${Math.max(0, candidates.length - documents.length)} documentos adicionales o no disponibles${unavailable ? ` (${unavailable} no se pudieron leer)` : ""}.`;
+  const documents=memory.hits.filter(h=>selected.has(h.projectId)).map(h=>({id:h.knowledgeId,projectId:h.projectId,title:h.title,text:h.text,excerpt:memory.coverage?.entries.find(e=>e.id===h.knowledgeId)?.mode!=="full"}));
+  const inventory=memory.coverage;
+  const coverage = `${projectIds.length} proyectos con contexto; ${documents.length} fuentes consultadas; ${inventory?.total??documents.length} fuentes en catálogo; ${inventory?.pending??0} pendientes; ${inventory?.unavailable??0} no disponibles. Los extractos no son lecturas completas.`;
   return { projectIds, data: { today: bogotaDay(), timezone: "America/Bogota", projects: state.projects.map(({ id, name, shortCode }) => ({ id, name, shortCode })), details, documents, pendingProposals: state.suggestions.filter(s => s.projectId && selected.has(s.projectId) && s.status === "pending").map(s => ({ id: s.id, projectId: s.projectId, title: s.title, impact: s.impact, payload: s.payload })), coverage }, coverage, memory: { status: memory.status, warning: memory.warning } };
 }

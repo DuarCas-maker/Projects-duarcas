@@ -11,7 +11,7 @@ export function aiConfig() {
 export async function aiStatus(userId: string, scope: string) {
   const used = await db().prepare("SELECT COUNT(*) AS used FROM ai_runs WHERE user_id = ? AND day_key = ? AND kind NOT IN ('notebook_voice','notebook_voice_config')").bind(userId, bogotaDay()).first<{ used: number }>();
   const history = await db().prepare("SELECT id, query, result, created_at, kind FROM ai_runs WHERE user_id = ? AND scope = ? AND status = 'completed' AND kind = 'chat' ORDER BY created_at DESC LIMIT 12").bind(userId, scope).all<{ id: string; query: string; result: string; created_at: string; kind: string }>();
-  return { ...aiConfig(), used: used?.used ?? 0, history: history.results.reverse().map((row) => { const saved = JSON.parse(row.result); return { id: row.id, query: row.query, result: saved.response as AiResult, sources:saved.sources, memory:saved.memory, createdAt: row.created_at, kind: row.kind }; }) as AiRecord[] };
+  return { ...aiConfig(), used: used?.used ?? 0, history: history.results.reverse().map((row) => { const saved = JSON.parse(row.result); return { id: row.id, query: row.query, result: saved.response as AiResult, sources:saved.sources, memory:saved.memory, sourceCoverage:saved.sourceCoverage,contextRevision:saved.contextRevision,createdAt: row.created_at, kind: row.kind }; }) as AiRecord[] };
 }
 export async function findAiRun(userId: string, id: string) {
   return db().prepare("SELECT * FROM ai_runs WHERE user_id = ? AND id = ?").bind(userId, id).first<{ id: string; scope: string; kind: string; query: string; status: string; result: string; created_at: string }>();

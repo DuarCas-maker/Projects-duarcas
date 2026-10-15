@@ -1,5 +1,6 @@
 "use client";
 import type { MemoryAnswerRecord, MemoryClaim } from "@/lib/memory-answer";
+import { SourceCoverageView } from "./project-sources";
 
 const labels={topic:"Tema",agreement:"Acuerdo",pending:"Pendiente"};
 export function MemoryAnswerView({record}:{record:MemoryAnswerRecord}) {
@@ -10,6 +11,7 @@ export function MemoryAnswerView({record}:{record:MemoryAnswerRecord}) {
       {!!record.result.points.length&&<ol className="memory-answer-points">{record.result.points.map((point,index)=><li key={index}><span className="memory-answer-kind">{labels[point.kind]}</span><p>{point.text}</p>{evidence(point)}</li>)}</ol>}
     </>:<p>{record.message}</p>}
     {record.warnings.map((warning,index)=><p className="memory-answer-warning" key={index}>{warning}</p>)}
+    {record.sourceCoverage&&<SourceCoverageView coverage={record.sourceCoverage}/>}
     {!!record.sources.length&&<details className="memory-answer-sources"><summary>Fuentes utilizadas ({record.sources.length})</summary><ul>{record.sources.map(source=><li key={source.id}>{source.title} · {source.date??"Sin fecha"}</li>)}</ul></details>}
   </div>;
 }

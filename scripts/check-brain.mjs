@@ -54,7 +54,7 @@ const link={source_id:"project-os",external_reference:a,knowledge_id:"source-a",
 const hits=selectMemoryHits([{slug:b,source_id:"project-os",chunk_text:"another workspace"},{slug:a,source_id:"default",chunk_text:"forged source"},{slug:a,chunk_text:"missing source"},null,{slug:a,source_id:"project-os",chunk_text:"approved evidence"},{slug:a,source_id:"project-os",chunk_text:"duplicate"}],[link]);
 assert.equal(hits.length,1); assert.equal(hits[0].text,"approved evidence"); assert.equal(hits[0].projectId,"project-a");
 const {aiContext}=(await load("../lib/ai-context.ts")).namespace;
-const state={projects:[{id:"project-a",name:"A"},{id:"project-b",name:"B"}],tasks:[],milestones:[],financials:[],events:[],knowledge:[],inbox:[]};
+const state={projects:[{id:"project-a",userId:"fixture",name:"A"},{id:"project-b",userId:"fixture",name:"B"}],tasks:[],milestones:[],financials:[],events:[],knowledge:[],inbox:[],suggestions:[],repositories:[],dependencies:[]};
 const scoped=aiContext(state,"project-a",undefined,{status:"connected",hits:[hits[0],{...hits[0],id:"forged-id",projectId:"project-b",text:"do not reveal this"}]});
 assert.ok(scoped.sources.has("brain:source-a"));assert.ok(!scoped.sources.has("forged-id"));assert.ok(!scoped.text.includes("do not reveal this"));
 console.log(JSON.stringify({passed:true,tokenReuse:true,refreshOn401:true,sse:true,noCredentialEcho:true,redirectsRejected:true,sizeBounded:true,secretInputRejected:true,workspaceAndProjectPathsIsolated:true}));

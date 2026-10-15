@@ -6,11 +6,13 @@ import { readMeeting } from "./meetings";
 import { projectRepositorySources } from "./github-context";
 import { asksForLatest, orderedProjectMeetings, readableMemoryText, boundedMemoryExcerpt, MAX_ANSWER_CONTEXT_CHARS, type MemoryAnswerMode, type MemoryAnswerSource } from "./memory-answer";
 import type { Workspace } from "./workspace-types";
+import { selectedSourceCoverage, type SourceCoverage } from "./project-sources";
 
 export async function memoryAnswerContext(userId:string,state:Workspace,projectId:string,query:string,mode:MemoryAnswerMode,requestId:string) {
   const latest=mode==="latest_meeting" || asksForLatest(query),meetings=orderedProjectMeetings(state,userId,projectId),latestDate=meetings[0]?.meeting.date??null;
   const policy=latest?"latest_meeting" as const:"relevance" as const;
   const sources:MemoryAnswerSource[]=[],warnings:string[]=[];
+  let sourceCoverage:SourceCoverage|undefined;
   let remaining=MAX_ANSWER_CONTEXT_CHARS;
   const add=(source:Omit<MemoryAnswerSource,"text"|"partial">,raw:string,budget:number,partial=false)=>{
     const clean=readableMemoryText(raw);if(!clean || remaining<300) return;
@@ -54,7 +56,8 @@ export async function memoryAnswerContext(userId:string,state:Workspace,projectI
     let memory;
     try {memory=await recallMemory(userId,[projectId],safeMemoryText(query),requestId,state);}
     catch {return {policy,sources,warnings,latestDate,message:"No se pudo consultar GBrain. Los originales se conservan; reintenta la pregunta o consulta la última reunión."};}
-    if(memory.status!=="connected" || memory.warning) warnings.push(memory.warning??"GBrain no está configurado. Puedes consultar directamente la última reunión.");
+    if(memory.status!=="connected" || memory.warning) warnings.push(memory.warning??"No se recuperó contenido preparado. Revisa las fuentes pendientes en el catálogo del proyecto.");
+    sourceCoverage=memory.coverage;
     const activeRepos=new Set(projectRepositorySources(state,userId,projectId).map(r=>r.item.id));
     const hits=memory.hits.flatMap(hit=>{
       const item=state.knowledge.find(k=>k.id===hit.knowledgeId && k.projectId===projectId && k.userId===userId);
@@ -62,8 +65,11 @@ export async function memoryAnswerContext(userId:string,state:Workspace,projectI
       const date=item.itemType==="meeting"?readMeeting(item)?.date??null:item.occurredAt.slice(0,10);
       return [{hit,item,date}];
     }).sort((a,b)=>(b.date??"").localeCompare(a.date??"")||b.hit.score-a.hit.score);
-    for(const {hit,item,date} of hits) add({id:hit.id,knowledgeId:item.id,title:item.title,date,kind:"memory"},safeSourceText(hit.text),1800,true);
+    const perSource=Math.max(300,Math.floor(MAX_ANSWER_CONTEXT_CHARS/Math.max(1,hits.length)));
+    for(const {hit,item,date} of hits) add({id:hit.id,knowledgeId:item.id,title:item.title,date,kind:memory.provider==="local"||memory.provider==="local_and_gbrain"?"original":"memory"},safeSourceText(hit.text),perSource,memory.coverage?.entries.find(e=>e.id===item.id)?.mode!=="full");
   }
   if(sources.some(s=>s.partial)) warnings.push("Cobertura parcial: se usaron extractos, no todos los documentos. Para una reunión extensa, completa «Analizar y proponer tareas» y vuelve a preguntar.");
-  return {policy,sources,warnings,latestDate,message:sources.length?undefined:latest?"La última reunión está identificada, pero no tiene contenido legible disponible. No se respondió con reuniones antiguas.":"No hay coincidencias útiles en las fuentes indexadas de este proyecto. Procesa una fuente en GBrain o consulta la última reunión."};
+  sourceCoverage=selectedSourceCoverage(sourceCoverage,new Set(sources.map(s=>s.id)));
+  if(sourceCoverage)sourceCoverage.entries=sourceCoverage.entries.map(e=>{const source=sources.find(s=>s.id===e.evidenceId);return source?{...e,text:source.text,mode:source.partial?"excerpt":"full"}:e;});
+  return {policy,sources,warnings,latestDate,sourceCoverage,message:sources.length?undefined:latest?"La última reunión está identificada, pero no tiene contenido legible disponible. No se respondió con reuniones antiguas.":"No hay contenido legible disponible. Revisa el catálogo de fuentes y prepara los documentos pendientes."};
 }

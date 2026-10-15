@@ -9,10 +9,12 @@ export type MemoryAnswerResult = { answer:MemoryClaim; points:(MemoryClaim & { k
 export type MemoryAnswerRecord = {
   id:string; query:string; policy:"latest_meeting"|"relevance"; result:MemoryAnswerResult|null;
   sources:MemoryAnswerSource[]; warnings:string[]; latestDate:string|null; message?:string;
+  sourceCoverage?:import("./project-sources").SourceCoverage;
 };
 export const MAX_ANSWER_CONTEXT_CHARS = 16000;
 export function asksForLatest(query:string) {
   const text=query.normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase();
+  if(/document|archivo|contexto|repositorio|commit|codigo|novedad|actualiz/.test(text)&&!/reunion|hablo|hablaron|acordo/.test(text))return false;
   return /\b(ultim[oa]s?|mas reciente[s]?|recientemente|lo reciente)\b/.test(text);
 }
 export function orderedProjectMeetings(state:Workspace,userId:string,projectId:string) {

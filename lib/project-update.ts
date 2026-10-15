@@ -8,6 +8,7 @@ import { FINDING_LABELS, type MeetingAnalysis } from "./meeting-analysis";
 import { buildCoreCommand, CoreValidationError } from "./core-commands";
 import { repositoryFollowup, projectRepositorySources, type RepositoryFollowup, type RepositoryFollowupInput } from "./github-context";
 import { operationsFor, assignmentLabel, financeTotals, detailFor } from "./project-operations";
+import { selectedSourceCoverage, type SourceCoverage } from "./project-sources";
 
 export type UpdateClaim = { text: string; sourceIds: string[] };
 export type ProjectUpdateResult = {
@@ -28,6 +29,7 @@ export type ProjectUpdateRecord = {
   id: string; createdAt: string; revision: string; result: ProjectUpdateResult;
   sources: Record<string, string>; memory: { status: string; count: number; warning?: string };
   coverage?:{included:number;omitted:number};
+  sourceCoverage?:SourceCoverage;
   repositories?: (RepositoryFollowup & { excerpt: boolean; unavailable: boolean; used: boolean })[];
 };
 
@@ -92,6 +94,8 @@ export function projectUpdateContext(state: Workspace, snapshot: ProjectUpdateSn
   const activeSources = projectRepositorySources(state,project.userId,project.id), activeIds = new Set(activeSources.map(s=>s.item.id));
   const repos = repositoryFollowup(state,project.userId,project.id);
   const scopedMemory = memory.hits.filter(h => h.projectId === project.id && (!h.knowledgeId || !state.knowledge.some(k=>k.id===h.knowledgeId && k.itemType==="repository") || activeIds.has(h.knowledgeId)));
+  // The same verified source excerpts used by Intelligence are reserved early.
+  scopedMemory.forEach(row=>add(row.id,"project_source_excerpt",row));
   // Put ranked tasks and independently bounded repository excerpts early so
   // large meeting/history records cannot crowd out the whole technical view.
   const taskContext = (task: Workspace["tasks"][number]) => { const { userId: _, ...row } = task, operations = operationsFor(state, project.id), detail = detailFor(operations, task.id); return { ...row, assignment: assignmentLabel(operations, task.id), plannedStart: detail.plannedStart, plannedEnd: detail.plannedEnd, ranking: rankTask(task, state) }; };
@@ -104,7 +108,7 @@ export function projectUpdateContext(state: Workspace, snapshot: ProjectUpdateSn
   snapshot.applied.forEach(row => add(row.id,"approved_change",row));
   snapshot.recent.forEach(row=>add(row.id,"other_confirmed_change_since_meeting_DATE_NOT_CAUSED_BY_MEETING",row));
   activeKnowledge(state).filter(k=>k.projectId===project.id && k.userId===project.userId && !["meeting","repository"].includes(k.itemType)).slice().sort((a,b)=>b.occurredAt.localeCompare(a.occurredAt)).forEach(k=>add(k.id,"local_knowledge_summary_NOT_full_document",{title:k.title,itemType:k.itemType,summary:k.summary,occurredAt:k.occurredAt}));
-  scopedMemory.forEach(row => add(row.id,"gbrain_retrieved_excerpt_NOT_entire_memory",row));
+  scopedMemory.filter(row=>!records.some(r=>r.id===row.id)).forEach(row => add(row.id,"gbrain_retrieved_excerpt_NOT_entire_memory",row));
   snapshot.pending.forEach(row => add(row.id,"pending_NOT_applied",row));
   const tasks = state.tasks.filter(t => t.projectId === project.id).sort((a,b) => rankTask(b,state).score-rankTask(a,state).score);
   for (const task of tasks) if (!records.some(r => r.id === task.id)) add(task.id,"task",taskContext(task));
@@ -118,12 +122,12 @@ export function projectUpdateContext(state: Workspace, snapshot: ProjectUpdateSn
   const selected: typeof records = []; let size = 0, omitted = 0;
   for (const record of records) {const length=JSON.stringify(record).length;if(size+length>44000){omitted++;continue;}selected.push(record);size+=length;}
   const sources = new Set(selected.map(r => r.id));
-  const names:Record<string,string>={project:"Proyecto",current_counts:"Estado y prioridades",meeting_analysis_NOT_operational_state:"Análisis de reunión · no confirmado",approved_change:"Cambio confirmado",other_confirmed_change_since_meeting_DATE_NOT_CAUSED_BY_MEETING:"Historial desde la fecha",pending_NOT_applied:"Pendiente · no aplicado",task:"Tarea",milestone:"Hito",financial:"Finanzas",history:"Historial",gbrain_retrieved_excerpt_NOT_entire_memory:"Memoria GBrain",github_snapshot_NOT_operational_completion:"GitHub · versión guardada",local_knowledge_summary_NOT_full_document:"Fuente local · resumen"};
+  const names:Record<string,string>={project_source_excerpt:"Fuente del proyecto · contenido",project:"Proyecto",current_counts:"Estado y prioridades",meeting_analysis_NOT_operational_state:"Análisis de reunión · no confirmado",approved_change:"Cambio confirmado",other_confirmed_change_since_meeting_DATE_NOT_CAUSED_BY_MEETING:"Historial desde la fecha",pending_NOT_applied:"Pendiente · no aplicado",task:"Tarea",milestone:"Hito",financial:"Finanzas",history:"Historial",gbrain_retrieved_excerpt_NOT_entire_memory:"Memoria GBrain",github_snapshot_NOT_operational_completion:"GitHub · versión guardada",local_knowledge_summary_NOT_full_document:"Fuente local · resumen"};
   const labels = Object.fromEntries(selected.map(r => {const data=r.data as {title?:string;name?:string};return [r.id,`${names[r.type]??r.type}: ${data.title ?? data.name ?? (r.id.startsWith("status:") ? "Recuento y prioridades actuales" : r.id)}`];}));
-  return {sources,labels,omittedRecords:omitted,memoryCount:selected.filter(r=>r.type==="gbrain_retrieved_excerpt_NOT_entire_memory").length,repositories:repos.map(repo=>{const original=repositoryContext.find(r=>r.knowledgeId===repo.knowledgeId);return {...repo,excerpt:original?.excerpt ?? false,unavailable:!!repo.knowledgeId && (!original || original.unavailable),used:sources.has(repo.knowledgeId ?? repo.id)};}),
+  return {sources,labels,sourceCoverage:selectedSourceCoverage(memory.coverage,sources,omitted),omittedRecords:omitted,memoryCount:selected.filter(r=>["project_source_excerpt","gbrain_retrieved_excerpt_NOT_entire_memory"].includes(r.type)).length,repositories:repos.map(repo=>{const original=repositoryContext.find(r=>r.knowledgeId===repo.knowledgeId);return {...repo,excerpt:original?.excerpt ?? false,unavailable:!!repo.knowledgeId && (!original || original.unavailable),used:sources.has(repo.knowledgeId ?? repo.id)};}),
     technicalSources:new Set(repos.filter(r=>r.knowledgeId && sources.has(r.knowledgeId)).map(r=>r.knowledgeId!)),
     changeSources:new Set([...snapshot.applied,...snapshot.recent].map(r => r.id).filter(id => sources.has(id))),pendingSources:new Set(snapshot.pending.map(r => r.id).filter(id => sources.has(id))),taskIds:new Set(snapshot.candidates.map(t => t.id).filter(id => sources.has(id))),
-    text:JSON.stringify({today:bogotaDay(),timezone:"America/Bogota",scope:project.id,memory:{status:memory.status,warning:memory.warning,supersededGithubHitsOmitted:memory.hits.filter(h=>h.projectId===project.id).length-scopedMemory.length},github:{live:false,notTaskCompletion:true},omittedRecords:omitted,records:selected})};
+    text:JSON.stringify({today:bogotaDay(),timezone:"America/Bogota",scope:project.id,memory:{status:memory.status,warning:memory.warning,supersededGithubHitsOmitted:memory.hits.filter(h=>h.projectId===project.id).length-scopedMemory.length},sourceCoverage:memory.coverage?{total:memory.coverage.total,pending:memory.coverage.pending,unavailable:memory.coverage.unavailable,excluded:memory.coverage.excluded}:undefined,github:{live:false,notTaskCompletion:true},omittedRecords:omitted,records:selected})};
 }
 
 export function validateProjectUpdate(value: unknown, context: ReturnType<typeof projectUpdateContext>): ProjectUpdateResult {

@@ -10,8 +10,9 @@ import { getSupabaseDocumentBytes, insertSupabaseRow, isSupabaseConfigured, upda
 import { documentFormat, extractDocumentText, boundedDocumentBytes, MAX_DOCUMENT_BYTES } from "./brain-documents";
 import type { Workspace } from "./workspace-types";
 import type { BrainMemory } from "./brain-types";
-import { activeKnowledge,readTaskVersion } from "./task-attachments";
-import { foldSearchText,searchFingerprint } from "./global-search";
+import { readTaskVersion } from "./task-attachments";
+import { projectSourceContext } from "@/db/project-sources";
+import { currentProjectKnowledge, isProjectNews, type SourceCoverage } from "./project-sources";
 
 export function brainConfig() { return { url: env.GBRAIN_URL ?? "", sourceId: env.GBRAIN_SOURCE_ID ?? "", clientId: env.GBRAIN_CLIENT_ID ?? "", clientSecret: env.GBRAIN_CLIENT_SECRET ?? "" }; }
 export function brainConfigured() { const c = brainConfig(); return !!(c.url && c.sourceId && c.clientId && c.clientSecret); }
@@ -110,32 +111,30 @@ export async function processMemory(userId: string, projectName: string, item: K
     await setMemoryState(row,failure.code === "write_pending" ? "pending" : "error",`${parts.length > 1 ? `Fragmentos verificados: ${completed} de ${parts.length}. ` : ""}${failure.message}`,true); throw failure;
   }
 }
-export async function recallMemory(userId: string, projectIds: string[], query: string, requestId: string, state?:Workspace): Promise<BrainMemory> {
-  const active=state?activeKnowledge(state):undefined,activeIds=active&&new Set(active.map(k=>k.id)),local:BrainMemory["hits"]=[];
-  if(active&&env.DB) {
-    const candidates=active.filter(k=>k.userId===userId&&projectIds.includes(k.projectId)&&k.itemType==="task_resource"&&["ready","indexed"].includes(k.processingStatus)),words=foldSearchText(query).split(/\W+/).filter(w=>w.length>=4);
-    const ranked=[];
-    for(const item of candidates) {
-      const row=await env.DB.prepare("SELECT content,fingerprint,status FROM knowledge_search WHERE user_id = ? AND project_id = ? AND knowledge_id = ?").bind(userId,item.projectId,item.id).first<{content:string;fingerprint:string;status:string}>();
-      if(!row||row.status!=="ready"||row.fingerprint!==await searchFingerprint(item))continue;
-      const normalized=foldSearchText(row.content),score=words.filter(w=>normalized.includes(w)).length;
-      ranked.push({item,row,score});
-    }
-    ranked.sort((a,b)=>b.score-a.score||b.item.occurredAt.localeCompare(a.item.occurredAt));
-    for(const {item,row,score} of ranked.slice(0,5)) {const normalized=foldSearchText(row.content),needle=words.find(w=>normalized.includes(w)),start=needle?Math.max(0,normalized.indexOf(needle)-450):0;const excerpt=`${start?"…":""}${row.content.slice(start,start+1800)}${start+1800<row.content.length?"…":""}`;local.push({id:`task:${item.id}`,knowledgeId:item.id,projectId:item.projectId,title:item.title,text:excerpt,sourceReference:`Recurso vigente de tarea: ${item.title}`,score});}
+export async function recallMemory(userId: string, projectIds: string[], query: string, requestId: string, state?:Workspace, previous?:SourceCoverage,options?:{prepare?:boolean}): Promise<BrainMemory> {
+  const active=state?currentProjectKnowledge(state,userId,projectIds):undefined,activeIds=active&&new Set(active.map(k=>k.id));
+  let local:BrainMemory["hits"]=[],coverage:SourceCoverage|undefined,localWarning:string|undefined;
+  if(state) {
+    try {const current=await projectSourceContext(userId,state,projectIds,query,previous,options?.prepare!==false);local=current.hits;coverage=current.coverage;}
+    catch {localWarning="No se pudo consultar el índice de documentos. La cobertura documental está incompleta.";}
   }
-  const merge=(hits:BrainMemory["hits"])=>[...local,...hits.filter(h=>!activeIds||activeIds.has(h.knowledgeId))].filter((h,i,all)=>all.findIndex(other=>other.knowledgeId===h.knowledgeId)===i).slice(0,10);
-  if (!brainConfigured() || env.PROJECT_OS_BRAIN_ENABLED !== "true") return {status:local.length?"connected":"not_configured",hits:local,warning:local.length?"Se consultan los recursos vigentes de las tareas desde el índice local.":undefined};
-  const allowed = new Set(projectIds), rows = (await memoryRows(userId,projectIds.length === 1 ? projectIds[0] : undefined)).filter((row) => allowed.has(row.project_id) && row.status === "ready" && row.source_id === brainConfig().sourceId && row.brain_id === brainConfig().url.replace(/\/$/,""));
-  if (!rows.length) return { status:"connected",hits:local };
+  // Remote memory is a retrieval hint, never authority for a deleted or changed
+  // original. With workspace state, only current, verified local text is sent.
+  const merge=(hits:BrainMemory["hits"])=>state?(isProjectNews(query)?local:[...local].sort((a,b)=>(b.score+(hits.some(h=>h.knowledgeId===b.knowledgeId)?0.5:0))-(a.score+(hits.some(h=>h.knowledgeId===a.knowledgeId)?0.5:0)))):[...hits.filter(h=>!activeIds||activeIds.has(h.knowledgeId))];
+  const localResult=(warning?:string):BrainMemory=>({status:local.length?"connected":"not_configured",hits:local,coverage,provider:"local",warning:[localWarning,warning].filter(Boolean).join(" ")||undefined});
+  if (!brainConfigured() || env.PROJECT_OS_BRAIN_ENABLED !== "true") return localResult();
+  const allowed = new Set(projectIds);let rows:MemoryRow[];
+  try{rows=(await memoryRows(userId,projectIds.length === 1 ? projectIds[0] : undefined)).filter((row) => allowed.has(row.project_id) && (!activeIds||activeIds.has(row.knowledge_id)) && row.status === "ready" && row.source_id === brainConfig().sourceId && row.brain_id === brainConfig().url.replace(/\/$/,""));}
+  catch(error){if(state)return localResult("No se pudo consultar el registro de GBrain; se usa el índice vigente del proyecto.");throw error;}
+  if (!rows.length) return localResult();
   const hash = await contentHash(JSON.stringify({projectIds:[...allowed].sort(),query}));
   let reservation;
   try {reservation=await reserveBrainRequest(userId,requestId,projectIds.length === 1 ? projectIds[0] : "portfolio","search",hash);}
-  catch(error){if(local.length)return {status:"connected",hits:local,warning:"GBrain no está disponible para esta consulta; se usan los recursos vigentes de tareas."};throw error;}
-  if (reservation.replayed) {const saved=reservation.result as BrainMemory;return {...saved,hits:merge(saved.hits)};}
+  catch(error){if(state)return localResult("GBrain no está disponible; se consultó el índice vigente del proyecto.");throw error;}
+  if (reservation.replayed) {const saved=reservation.result as BrainMemory;return {...saved,hits:merge(saved.hits),coverage,provider:state?"local_and_gbrain":"gbrain"};}
   try {
     const raw = await client().call<unknown>("search",{query,source_id:brainConfig().sourceId,limit:10,snippet_chars:1800,return_unit:"window",return_window:1,token_budget:4000,fields:"full"});
     const hits = merge(selectMemoryHits(raw,rows));
-    const result: BrainMemory = {status:"connected",hits}; await completeBrainRequest(userId,requestId,result); return result;
-  } catch (error) { await retryBrainRequest(userId,requestId);if(local.length)return {status:"connected",hits:local,warning:"GBrain no respondió; se consultan únicamente los recursos vigentes de tareas."};throw error; }
+    const result: BrainMemory = {status:"connected",hits,coverage,provider:state?"local_and_gbrain":"gbrain",warning:localWarning}; await completeBrainRequest(userId,requestId,result); return result;
+  } catch (error) { await retryBrainRequest(userId,requestId);if(state)return localResult("GBrain no respondió; se consultó el índice vigente del proyecto.");throw error; }
 }

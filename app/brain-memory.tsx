@@ -1,5 +1,5 @@
 "use client";
-import { activeKnowledge } from "@/lib/task-attachments";
+import { currentProjectKnowledge } from "@/lib/project-sources";
 
 import { useEffect, useRef, useState } from "react";
 import { BrainCircuit, CheckCircle2, FileText, Search, Plus } from "lucide-react";
@@ -18,7 +18,7 @@ export function BrainMemoryPanel({state,projectId,acceptState}: {state:Workspace
   const operations = useRef(new Map<string,{fingerprint:string;id:string}>());
   const generation = useRef(0), stop = useRef(false);
   const [progress,setProgress] = useState("");
-  const sources = activeKnowledge(state).filter((item) => item.projectId === projectId), signature = sources.map((item) => `${item.id}:${item.processingStatus}`).join(",");
+  const sources = currentProjectKnowledge(state,state.projects.find(p=>p.id===projectId)?.userId??"",[projectId]), signature = sources.map((item) => `${item.id}:${item.processingStatus}`).join(",");
   const refresh = async (signal?:AbortSignal) => {
     const response = await fetch(`/api/brain?projectId=${encodeURIComponent(projectId)}`,{cache:"no-store",signal});
     const data = await response.json() as BrainStatus;
@@ -70,7 +70,7 @@ export function BrainMemoryPanel({state,projectId,acceptState}: {state:Workspace
   };
   return <section className="panel brain-panel" aria-label="Memoria GBrain">
     <div className="brain-heading"><span className="brain-symbol"><BrainCircuit size={23}/></span><div><span className="eyebrow">MEMORIA CONECTADA</span><h3>GBrain · contexto del proyecto</h3><p>{!status ? "Comprobando conexión…" : !enabled ? "GBrain no está configurado o está desactivado." : status.connected ? `Conectado · ${status.used}/${status.limit} operaciones hoy (compartidas)` : "GBrain no está disponible. Los originales están a salvo."}</p></div></div>
-    <p className="daily-hint">Los recursos enviados desde las tareas están disponibles para búsquedas e IA. También puedes conectar fuentes con GBrain. Las preguntas se resumen con OpenAI cuando pulsas Buscar. No incluyas claves ni contraseñas.</p>
+    <p className="daily-hint">Las preguntas utilizan el índice compartido de archivos de contexto, reuniones, notas, recursos de tareas y repositorios sincronizados. Revisa su disponibilidad en Fuentes de Inteligencia. GBrain es una conexión adicional. Las respuestas se resumen con OpenAI cuando pulsas Buscar.</p>
     <div className="brain-tools">
       <form className="brain-note" onSubmit={(event) => {event.preventDefault();void perform("create_note",{title,content},"note");}}>
         <h4><Plus size={16}/> Guardar una nota en memoria</h4>
@@ -82,13 +82,13 @@ export function BrainMemoryPanel({state,projectId,acceptState}: {state:Workspace
         <form onSubmit={(event) => {event.preventDefault();void ask();}}><Input aria-label="Buscar en la memoria del proyecto" placeholder="¿Qué fue lo último que se habló en el proyecto?" maxLength={1000} value={query} onChange={(event) => setQuery(event.target.value)} disabled={!!busy}/><Button type="submit" variant="outline" disabled={!!busy || !status?.ai?.configured || !status.ai.enabled || !query.trim()}>{busy === "search" ? "Respondiendo…" : "Buscar"}</Button></form>
         <label className="memory-answer-mode"><span>Alcance de la pregunta</span><select aria-label="Alcance de la pregunta" value={answerMode} onChange={event=>{setAnswerMode(event.target.value as MemoryAnswerMode);setAnswer(null);}} disabled={!!busy}><option value="auto">Según la pregunta</option><option value="latest_meeting">Solo la última reunión</option></select></label>
         <small>«Lo último» prioriza la Fecha de la reunión, no el título del archivo. {latestMeeting?`Más reciente: ${latestMeeting.meeting.date} · ${latestMeeting.item.title}.`:"Todavía no hay reuniones con fecha."}</small>
-        <small>Una respuesta consume una consulta de IA ({status?.ai?.used??0}/{status?.ai?.limit??40} hoy, compartidas). Incluye recursos vigentes de las tareas y fuentes de GBrain cuando está conectado. Las citas se muestran por separado.</small>
+        <small>Una respuesta consume una consulta de IA ({status?.ai?.used??0}/{status?.ai?.limit??40} hoy, compartidas). Consulta las fuentes vigentes del proyecto y muestra sus citas y cobertura.</small>
         {status?.ai&&!status.ai.enabled&&<p className="daily-hint">Activa la IA para obtener respuestas resumidas. Los originales se conservan.</p>}
         {answer&&<MemoryAnswerView record={answer}/>}
       </div>
     </div>
     <h4 className="brain-sources-title">Fuentes del proyecto</h4>
-    <div className="brain-source-list">{sources.length ? sources.map((item) => { const link = status?.links.find((entry) => entry.knowledgeId === item.id), ready = link?.status === "ready", taskReady=item.itemType==="task_resource"&&["ready","indexed"].includes(item.processingStatus); return <article key={item.id}><FileText size={18}/><div><strong>{item.title}</strong><small>{ready ? "Indexado en GBrain" : taskReady ? "Disponible en búsquedas e IA" : link?.error || (link?.status === "pending" ? "Procesamiento pendiente" : "Original guardado · pendiente de procesar")}</small></div><Button variant="outline" size="sm" disabled={!!busy || !enabled || ready} onClick={() => void perform("process",{knowledgeId:item.id},item.id)}>{ready ? <><CheckCircle2 size={14}/> Indexado</> : busy === item.id ? "Procesando…" : link?.status === "pending" ? "Continuar" : link ? "Reintentar" : taskReady ? "Enviar a GBrain" : "Procesar"}</Button></article>; }) : <p className="daily-hint">Todavía no hay fuentes. Guarda una nota o envía un recurso desde Tareas → Archivos.</p>}</div>
+    <div className="brain-source-list">{sources.length ? sources.map((item) => { const link = status?.links.find((entry) => entry.knowledgeId === item.id), ready = link?.status === "ready", taskReady=item.itemType==="task_resource"&&["ready","indexed"].includes(item.processingStatus); return <article key={item.id}><FileText size={18}/><div><strong>{item.title}</strong><small>{ready ? "Indexado en GBrain" : taskReady ? "Disponible en búsquedas e IA" : link?.error || (link?.status === "pending" ? "Procesamiento pendiente" : "Original guardado · consulta su disponibilidad para IA en el catálogo superior")}</small></div><Button variant="outline" size="sm" disabled={!!busy || !enabled || ready} onClick={() => void perform("process",{knowledgeId:item.id},item.id)}>{ready ? <><CheckCircle2 size={14}/> Indexado</> : busy === item.id ? "Procesando…" : link?.status === "pending" ? "Continuar" : link ? "Reintentar" : taskReady ? "Enviar a GBrain" : "Procesar en GBrain"}</Button></article>; }) : <p className="daily-hint">Todavía no hay fuentes. Guarda una nota o envía un recurso desde Tareas → Archivos.</p>}</div>
     <small className="daily-hint">PDF con texto y Word .docx: hasta 10 MB y 40 KB de texto extraído; PDF hasta 100 páginas. TXT, Markdown, CSV y JSON UTF-8: hasta 48 KB. Los PDF escaneados necesitan OCR; convierte Word .doc a .docx. Siempre se conserva el original.</small>
     <small className="daily-hint">Reuniones: hasta 512 KiB de texto, dividido en un máximo de 16 fragmentos. Cada fragmento cuenta como una operación compartida; el enlace de Drive se guarda como referencia, sin analizar el video.</small>
     {progress && <p role="status" className="daily-hint">{progress}</p>}

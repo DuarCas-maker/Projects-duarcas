@@ -348,6 +348,27 @@ button { cursor: pointer; }
 .ai-badge span { color: var(--on-dark-muted); font-size: .7rem; }
 .ai-badge strong { color: var(--brand-white); }
 .chat-panel { padding: 0; overflow: hidden; min-height: 31rem; }
+.project-sources-panel { padding: 1rem; border: 1px solid var(--border); border-radius: .7rem; margin-bottom: 1rem; min-width: 0; }
+.chat-panel > .project-sources-panel { margin: 1rem; }
+.project-sources-panel p, .source-coverage p { font-size: .85rem; line-height: 1.5; margin: .5rem 0; }
+.project-sources-panel summary, .source-coverage summary { cursor: pointer; font-size: .85rem; line-height: 1.5; }
+.project-source-list { list-style: none; padding: 0; margin: .75rem 0; display: grid; gap: .7rem; }
+.project-source-row { border-top: 1px solid var(--border); padding-top: .65rem; min-width: 0; overflow-wrap: anywhere; }
+.project-source-row strong, .project-source-row small { display: block; }
+.project-source-row small { font-size: .78rem; margin-top: .25rem; opacity: .8; }
+.project-source-row pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 22rem; overflow: auto; font: .8rem/1.6 inherit; padding: .65rem; background: var(--purple-soft); border-radius: .4rem; }
+.source-coverage { padding: .75rem; border: 1px solid var(--border); border-radius: .6rem; margin: .65rem 0; }
+.messages .source-coverage p { padding: 0; margin: .5rem 0; background: transparent; border-radius: 0; }
+.ai-messages .ai-exchange { padding-inline: 1rem; }
+.ai-messages .ai-exchange .user p { color: var(--ink); }
+.ai-news-controls { display: flex; align-items: center; flex-wrap: wrap; gap: .65rem; padding: 0 1rem 1rem; }
+.ai-news-controls label { display: flex; align-items: center; flex-wrap: wrap; gap: .5rem; font-size: .8rem; }
+.ai-news-controls input { width: 10rem; }
+.ai-news-controls > small { width: 100%; font-size: .75rem; }
+.intelligence-scope { display: grid; gap: .4rem; font-size: .9rem; }
+.intelligence-scope select { width: min(100%, 30rem); border: 1px solid var(--line); border-radius: .5rem; padding: .6rem; background: var(--surface); }
+.intelligence-scope small { color: var(--muted-copy); }
+@media (max-width: 600px) { .project-sources-panel .section-heading { flex-wrap: wrap; gap: .65rem; } .chat-panel > .project-sources-panel { margin: .65rem; } }
 .chat-head { display: flex; gap: .65rem; align-items: center; padding: 1rem 1.1rem; border-bottom: 1px solid var(--line); background: var(--soft); }
 .chat-head > span { display: grid; place-items: center; width: 2.2rem; height: 2.2rem; border-radius: .65rem; background: var(--brand-purple); color: var(--brand-white); }
 .chat-head > div { display: grid; }

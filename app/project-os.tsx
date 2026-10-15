@@ -1,4 +1,5 @@
 "use client";
+import { ProjectSources } from "./project-sources";
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -103,6 +104,7 @@ function ProjectDetail({ state, projectId, back, onStatus, openAdd, uploadDocume
       <TabsContent value="payments"><ProjectPayments state={state} projectId={projectId} save={saveCore} /></TabsContent>
       <TabsContent value="timeline"><section className="panel timeline"><SectionTitle eyebrow="HISTORIA" title="Todo lo que cambió" />{events.length ? events.map((event) => <div className="timeline-item" key={event.id}><time>{new Date(event.eventDate).toLocaleDateString("es-CO", { day: "2-digit", month: "short", timeZone: "America/Bogota" })}</time><span /><div><strong>{event.title}</strong><p>{mergeEventText(event)}</p><small>Fuente: {event.sourceType}</small></div></div>) : <Empty label="Aún no hay eventos para este proyecto." />}</section></TabsContent>
       <TabsContent value="knowledge">
+        <ProjectSources state={state} projectId={projectId}/>
         {searchSource?.knowledgeId && <SearchSourcePreview key={`source-${searchSource.knowledgeId}`} source={searchSource}/>}
         <RepositoryPanel key={`repos-${projectId}`} state={state} projectId={projectId} acceptState={acceptState}/>
         <MeetingResources key={`meetings-${projectId}`} state={state} projectId={projectId} acceptState={acceptState}/>
@@ -122,7 +124,7 @@ function InboxView({ state, capture, save, acceptState }: { state: Workspace; ca
   return <div className="view-stack narrow"><section className="page-intro"><div><p className="eyebrow">CAPTURA UNIVERSAL</p><h1>Inbox</h1><p>Vacía la cabeza. Project OS propone el proyecto, la intención y la acción.</p></div></section><section className="capture-box"><Textarea value={text} onChange={(event) => setText(event.target.value)} placeholder="Ej: ERM ya pagó. Mañana debo enviar el cronograma y después crear el repositorio…" /><div><div className="capture-tools"><button aria-label="Adjuntar archivo"><Paperclip size={17} /></button><button className={listening ? "recording" : ""} onClick={startVoice} aria-label="Dictar nota"><Mic size={17} />{listening ? "Escuchando…" : "Dictar"}</button></div><Button onClick={() => void submit()} disabled={capturing}>{capturing ? "Guardando…" : "Capturar"} <Sparkles size={16} /></Button></div></section><InboxTriage state={state} save={save} acceptState={acceptState} /></div>;
 }
 
-function IntelligenceView({ state, acceptState }: { state: Workspace; acceptState: (state: Workspace) => void }) { return <div className="view-stack"><section className="page-intro ai-intro"><div><p className="eyebrow">ORQUESTADOR</p><h1>Inteligencia de proyectos</h1><p>Respuestas basadas en tus registros. La IA propone; tú decides.</p></div><div className="ai-badge"><BrainCircuit size={22} /><span>{state.projects.length} proyectos<br /><strong>en el portafolio</strong></span></div></section><AiPanel state={state} acceptState={acceptState} /></div>; }
+function IntelligenceView({ state, acceptState }: { state: Workspace; acceptState: (state: Workspace) => void }) { const [scope,setScope]=useState("");return <div className="view-stack"><section className="page-intro ai-intro"><div><p className="eyebrow">ORQUESTADOR</p><h1>Inteligencia de proyectos</h1><p>Respuestas basadas en tus registros y fuentes vigentes. La IA propone; tú decides.</p></div><div className="ai-badge"><BrainCircuit size={22} /><span>{state.projects.length} proyectos<br /><strong>en el portafolio</strong></span></div></section><label className="intelligence-scope">Contexto de la consulta<select aria-label="Proyecto de la consulta de Inteligencia" value={scope} onChange={e=>setScope(e.target.value)}><option value="">Todos los proyectos</option>{state.projects.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select><small>Selecciona un proyecto para concentrar la lectura en sus documentos y repositorios.</small></label><AiPanel key={scope||"portfolio"} state={state} projectId={scope||undefined} acceptState={acceptState} /></div>; }
 
 function Empty({ label }: { label: string }) { return <div className="empty-state"><CheckCircle2 size={22} /><p>{label}</p></div>; }
 

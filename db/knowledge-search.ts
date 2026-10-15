@@ -12,7 +12,7 @@ export async function readIndexedSource(userId:string,item:Workspace["knowledge"
   if(item.userId!==userId)throw new BrainError("Fuente no encontrada.",404);
   const row=await db().prepare("SELECT fingerprint,status,content FROM knowledge_search WHERE user_id = ? AND knowledge_id = ? AND project_id = ?").bind(userId,item.id,item.projectId).first<{fingerprint:string;status:string;content:string}>();
   if(!row || row.fingerprint!==await searchFingerprint(item) || row.status!=="ready")throw new BrainError("Prepara esta fuente desde la búsqueda global para ver su texto completo.",409);
-  return {id:item.id,title:item.title,content:row.content};
+  return {id:item.id,title:item.title,content:row.content,version:row.fingerprint};
 }
 export async function indexKnowledge(userId:string,item:Workspace["knowledge"][number],retry=false) {
   if(item.userId!==userId)throw new BrainError("Fuente no encontrada.",404);

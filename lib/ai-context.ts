@@ -1,11 +1,11 @@
 import { mergeEventText } from "./task-structure";
-import { activeKnowledge } from "./task-attachments";
 import type { Workspace } from "./workspace-types";
 import type { AiResult } from "./ai-types";
 import { bogotaDay, rankTask } from "./daily-engine";
 import type { BrainMemory } from "./brain-types";
 import { readMeeting, readProjectContext } from "./meetings";
 import { operationsFor, assignmentLabel, financeTotals } from "./project-operations";
+import { currentProjectKnowledge, selectedSourceCoverage } from "./project-sources";
 
 export function aiContext(state: Workspace, projectId?: string, inboxId?: string, memory: BrainMemory = {status:"not_configured",hits:[]}) {
   if (projectId && !state.projects.some((item) => item.id === projectId)) throw new Error("Proyecto no encontrado");
@@ -15,6 +15,7 @@ export function aiContext(state: Workspace, projectId?: string, inboxId?: string
   const add = (type: string, rows: { id: string }[]) => rows.forEach((row) => records.push({ id: row.id, type, data: row }));
   add("project", projects.map(({ userId: _, ...row }) => row));
   add("gbrain", memory.hits.filter((hit) => ids.has(hit.projectId)).map((hit) => ({ ...hit, title: hit.sourceReference })));
+  if(memory.coverage) records.push({type:"source_changes_NOT_document_contents",id:`source_changes:${projectId??"portfolio"}`,data:{baseline:memory.coverage.baseline,changes:memory.coverage.changes,firstConsultation:!memory.coverage.baseline}});
   const scoped = state.tasks.filter((item) => ids.has(item.projectId) && item.sourceType!=="task_merge");
   add("task", scoped.sort((a, b) => rankTask(b, state).score - rankTask(a, state).score).slice(0, 70).map((task) => { const { userId: _, ...row } = task; return { ...row, assignment: assignmentLabel(operationsFor(state, task.projectId), task.id), priorityReason: rankTask(task, state).reason }; }));
   add("pending_task_proposal", state.suggestions.filter(s=>s.projectId && ids.has(s.projectId) && s.status==="pending").slice(0,40).map(s=>({id:s.id,projectId:s.projectId,title:s.title,reason:s.reason})));
@@ -26,7 +27,8 @@ export function aiContext(state: Workspace, projectId?: string, inboxId?: string
     add("current_finances", financeTotals(state, project.id).map(row => ({ id: `finance_${project.id}_${row.currency}`, projectId: project.id, ...row })));
   });
   add("event", state.events.filter((item) => ids.has(item.projectId)).sort((a, b) => b.eventDate.localeCompare(a.eventDate)).slice(0, 35).map(({ userId: _, ...row }) => ({...row,description:mergeEventText(row)})));
-  add("knowledge", activeKnowledge(state).filter((item) => ids.has(item.projectId)).slice(0, 15).map(item => {
+  const owner=projects[0]?.userId;
+  add("knowledge", (owner?currentProjectKnowledge(state,owner,[...ids]):[]).sort((a,b)=>b.occurredAt.localeCompare(a.occurredAt)).map(item => {
     const {userId:_,storageKey:_key,...row} = item;
     if(item.itemType==="task_resource")return {...row,sourceReference:"Recurso vigente de una tarea"};
     if(item.itemType==="project_context") {const context=readProjectContext(item);return {...row,sourceReference:context ? `Documento de contexto${context.date ? ` · referencia ${context.date}` : " sin fecha de referencia"}` : "Ficha de contexto no disponible"};}
@@ -38,10 +40,11 @@ export function aiContext(state: Workspace, projectId?: string, inboxId?: string
   }));
   add("inbox", state.inbox.filter((item) => inboxId ? item.id === inboxId : !projectId || (item.detectedProjectId && ids.has(item.detectedProjectId))).slice(0, 15).map(({ userId: _, ...row }) => row));
   // Retain complete records rather than truncating JSON; bound cost and input.
-  const selected: typeof records = []; let size = 0;
-  for (const record of records) { const chars = JSON.stringify(record).length; if (size + chars > 32000 && record.type !== "project") continue; selected.push(record); size += chars; }
+  const selected: typeof records = []; let size = 0,omitted=0;
+  for (const record of records) { const chars = JSON.stringify(record).length; if (size + chars > 48000 && record.type !== "project") {omitted++;continue;} selected.push(record); size += chars; }
   const sources = new Set(selected.map((item) => item.id));
-  return { sources, projectIds: ids, text: JSON.stringify({ today: bogotaDay(), timezone: "America/Bogota", scope: projectId ?? "portfolio", integrations: { googleCalendar: "not_connected", gbrain: memory.status, codexExecution: "not_connected" }, memoryWarning: memory.warning, records: selected }), labels: Object.fromEntries(selected.map((item) => [item.id, `${item.type}: ${(item.data as { title?: string; name?: string; content?: string }).title ?? (item.data as { name?: string }).name ?? (item.data as { content?: string }).content?.slice(0, 120) ?? item.id}`])) };
+  const coverage=selectedSourceCoverage(memory.coverage,sources,omitted);
+  return { sources, projectIds: ids, coverage, text: JSON.stringify({ today: bogotaDay(), timezone: "America/Bogota", scope: projectId ?? "portfolio", integrations: { googleCalendar: "not_connected", gbrain: memory.status, codexExecution: "not_connected" }, memoryWarning: memory.warning, sourceCoverage:coverage?{total:coverage.total,used:coverage.used,pending:coverage.pending,unavailable:coverage.unavailable,excluded:coverage.excluded,omittedRecords:omitted}:undefined, records: selected }), labels: Object.fromEntries(selected.map((item) => [item.id, `${item.type}: ${(item.data as { title?: string; name?: string; content?: string }).title ?? (item.data as { name?: string }).name ?? (item.data as { content?: string }).content?.slice(0, 120) ?? item.id}`])) };
 }
 
 export function validateAiResult(value: unknown, projectIds: Set<string>, sources: Set<string>, sourceText?: string): AiResult {
